@@ -1,0 +1,20 @@
+# Generated / local
+*.xcodeproj/
+*.xcworkspace/
+**/xcuserdata/
+**/DerivedData/
+build/
+dist/
+.build/
+.swiftpm/
+
+# Products
+*.app
+*.appex
+*.dmg
+*.pkg
+
+# Noise
+.DS_Store
+.idea/
+*.swp

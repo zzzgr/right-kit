@@ -1,0 +1,127 @@
+name: RightKit
+options:
+  bundleIdPrefix: com.rightkit
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  developmentLanguage: en
+  defaultConfig: Debug
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    ALWAYS_SEARCH_USER_PATHS: NO
+    CLANG_ENABLE_MODULES: YES
+    CLANG_ENABLE_OBJC_ARC: YES
+    ENABLE_HARDENED_RUNTIME: YES
+    COMBINE_HIDPI_IMAGES: YES
+    DEVELOPMENT_TEAM: SAXZHR4HFD
+    CODE_SIGN_STYLE: Automatic
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+      SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+      ONLY_ACTIVE_ARCH: YES
+      GCC_OPTIMIZATION_LEVEL: "0"
+      DEBUG_INFORMATION_FORMAT: dwarf
+      ENABLE_TESTABILITY: YES
+    Release:
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: "-O"
+      GCC_OPTIMIZATION_LEVEL: s
+      DEBUG_INFORMATION_FORMAT: "dwarf-with-dsym"
+      VALIDATE_PRODUCT: YES
+
+# RightKitShared is compiled as an ordinary static framework target rather than
+# consumed as a Swift package: XcodeGen + SPM leaves the Xcode GUI reporting
+# "Missing package product" after every clean/regenerate. Package.swift stays for
+# `swift test` only.
+
+targets:
+  RightKitShared:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Packages/RightKitShared/Sources/RightKitShared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rightkit.app.shared
+        PRODUCT_NAME: RightKitShared
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        MACH_O_TYPE: staticlib
+        # NO on purpose: the shared layer calls NSWorkspace.open on behalf of the
+        # extension (see ActionLink.handOff), which extension-only API rules forbid.
+        APPLICATION_EXTENSION_API_ONLY: "NO"
+
+  RightKit:
+    type: application
+    platform: macOS
+    sources:
+      - path: Apps/RightKit
+        excludes:
+          - Resources/Info.plist
+          - Resources/RightKit.entitlements
+    resources:
+      - path: Apps/RightKit/Resources/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rightkit.app
+        PRODUCT_NAME: RightKit
+        INFOPLIST_FILE: Apps/RightKit/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Apps/RightKit/Resources/RightKit.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+    dependencies:
+      - target: RightKitShared
+      - target: RightKitFinderSync
+        embed: true
+        codeSign: true
+
+  RightKitFinderSync:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Extensions/RightKitFinderSync/FinderSyncExtension.swift
+      - path: Extensions/RightKitFinderSync/Resources/Assets.xcassets
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.rightkit.app.FinderSync
+        PRODUCT_NAME: RightKitFinderSync
+        INFOPLIST_FILE: Extensions/RightKitFinderSync/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Extensions/RightKitFinderSync/RightKitFinderSync.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        APPLICATION_EXTENSION_API_ONLY: "YES"
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../../../Frameworks"
+    dependencies:
+      - target: RightKitShared
+
+schemes:
+  RightKit:
+    build:
+      targets:
+        RightKit: all
+        RightKitFinderSync: all
+        RightKitShared: all
+    run:
+      config: Debug
+    archive:
+      config: Release
