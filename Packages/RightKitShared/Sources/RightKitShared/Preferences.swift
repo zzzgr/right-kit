@@ -6,8 +6,10 @@ import Foundation
 /// Everything has a sane default, so a fresh install is fully usable without ever
 /// opening the settings window.
 public final class Preferences: @unchecked Sendable {
-    /// Kept in one place — `Info.plist` entitlements of both targets must match.
-    public static let appGroupID = "group.com.rightkit.app"
+    /// macOS permits team-prefixed groups without a provisioning profile. A
+    /// `group.` identifier needs registered membership and can otherwise trigger
+    /// App Data privacy prompts. Both targets' entitlements must match this value.
+    public static let appGroupID = "SAXZHR4HFD.com.rightkit.app"
 
     public static let shared = Preferences()
 

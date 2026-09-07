@@ -24,6 +24,25 @@ final class SettingsModel: ObservableObject {
         didSet { preferences.preferredEditor = preferredEditor }
     }
 
+    /// Mirrors the system's Login Items entry (see ``LoginItem``). Writing flips the
+    /// registration; if macOS refuses, the toggle snaps back and the reason is shown
+    /// under it instead of a modal.
+    @Published var launchAtLogin: Bool {
+        didSet {
+            guard !isSyncingLoginItem, launchAtLogin != LoginItem.isEnabled else { return }
+            do {
+                try LoginItem.setEnabled(launchAtLogin)
+                loginItemError = nil
+            } catch {
+                loginItemError = Strings.launchAtLoginFailed
+            }
+            refreshLoginItem()
+        }
+    }
+    @Published private(set) var loginItemState: LoginItem.State = .disabled
+    @Published private(set) var loginItemError: String?
+    private var isSyncingLoginItem = false
+
     private let preferences: Preferences
     private var activationObserver: NSObjectProtocol?
 
@@ -32,6 +51,7 @@ final class SettingsModel: ObservableObject {
         enabledActions = preferences.enabledActions
         preferredTerminal = preferences.preferredTerminal
         preferredEditor = preferences.preferredEditor
+        launchAtLogin = LoginItem.isEnabled
         refresh()
 
         activationObserver = NotificationCenter.default.addObserver(
@@ -51,6 +71,16 @@ final class SettingsModel: ObservableObject {
         installedTerminals = TerminalApp.installed
         installedEditors = EditorApp.installed
         enabledActions = preferences.enabledActions
+        refreshLoginItem()
+    }
+
+    /// Re-read the system's answer. Also called after each toggle, because macOS may
+    /// park a fresh registration in `requiresApproval` rather than enabling it.
+    private func refreshLoginItem() {
+        loginItemState = LoginItem.state
+        isSyncingLoginItem = true
+        launchAtLogin = LoginItem.isEnabled
+        isSyncingLoginItem = false
     }
 
     // MARK: - Menu contents

@@ -3,12 +3,12 @@
 #
 #   ./Scripts/release.sh              # distributable: Developer ID + notarized + stapled
 #                                     #   → dist/RightKit-<version>.dmg
-#   LOCAL=1 ./Scripts/release.sh      # this machine only: Apple Development, no notarization
+#   LOCAL=1 ./Scripts/release.sh      # development-signed, no notarization
 #                                     #   → dist/RightKit-<version>-dev.dmg
 #   IDENTITY="Developer ID Application: …" ./Scripts/release.sh
 #
-# Only the default mode produces a DMG other people can open. There is no bypass:
-#   * Apple Development signing  → Gatekeeper rejects it on other Macs
+# Only the default mode avoids a Gatekeeper override on the recipient's Mac:
+#   * Apple Development signing  → first launch needs approval in System Settings
 #   * ad-hoc signing             → pluginkit refuses to register the Finder extension
 set -euo pipefail
 
@@ -117,27 +117,20 @@ if [[ "$LOCAL" == "1" ]]; then
 右键助手 (RightKit) $VERSION ($BUILD)
 
 【安装】
-1. 把左边的「RightKit」拖到右边的「应用程序」
+1. 把「RightKit」拖进「应用程序」
 2. 打开「应用程序」里的 RightKit
-   —— 第一次打开会提示「无法验证开发者」，见下面【首次打开】
+   —— 如果系统阻止首次打开，按下面【首次打开】操作
 3. 按窗口里的设置向导，启用 Finder 扩展
 4. 在 Finder 里右键任意文件 / 文件夹 →「右键助手」
 
 务必从「应用程序」里打开，不要直接在这个磁盘映像里运行：
 Finder 扩展会记住启动路径，映像一推出扩展就失效了。
 
-【首次打开：解除隔离】
-这个版本没有经过 Apple 公证，所以系统默认拦一次。两种办法二选一：
-
-A. 终端里执行一条命令（最省事）：
-     xattr -cr /Applications/RightKit.app
-   然后正常双击打开。
-
-B. 不用终端：
-   双击 RightKit → 提示打不开 → 打开「系统设置 → 隐私与安全性」→
-   下滑找到「已阻止使用 RightKit」→ 点「仍要打开」。
-
-之后每次打开都不会再提示。
+【首次打开】
+安装包已包含应用签名，不需要你自行签名、安装 Xcode 或运行终端命令。
+本版本未经过 Apple 公证，macOS 可能会阻止首次打开。
+遇到提示时，打开「系统设置 → 隐私与安全性」，找到 RightKit，
+点击「仍要打开」，按系统提示确认，再重新打开应用。
 
 【卸载】
 退出菜单栏里的「右键助手」，把 /Applications/RightKit.app 拖进废纸篓即可。
@@ -182,13 +175,12 @@ ls -lh "$DMG"
 if [[ "$LOCAL" == "1" ]]; then
   cat <<EOF
 
-NOT notarized — shareable, but the recipient must clear the quarantine flag once:
-    xattr -cr /Applications/RightKit.app
-  (or: System Settings → Privacy & Security → "Open Anyway")
-  The DMG contains $NOTE explaining both routes.
+NOT notarized — the app is signed, but first launch may need approval in
+  System Settings → Privacy & Security → "Open Anyway".
+  Recipients do not need to sign the app or run terminal commands.
+  The DMG contains $NOTE with installation instructions.
 
   For a DMG that just opens on any Mac, you need a Developer ID Application
   certificate + notarization, then run ./Scripts/release.sh without LOCAL=1.
 EOF
 fi
-

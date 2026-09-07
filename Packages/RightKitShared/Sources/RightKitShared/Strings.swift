@@ -136,6 +136,18 @@ public enum Strings {
     public static var setupRowTitle: String { s("设置向导", "Setup guide") }
     public static var reopenSetup: String { s("重新打开", "Reopen") }
 
+    public static var launchAtLoginTitle: String { s("登录时启动", "Launch at login") }
+    public static var launchAtLoginNeedsApproval: String {
+        s(
+            "macOS 还没允许「右键助手」在后台运行，请在「登录项」里打开它。",
+            "macOS has not yet allowed RightKit to run in the background — turn it on under Login Items."
+        )
+    }
+    public static var launchAtLoginFailed: String {
+        s("无法修改登录项，请稍后再试。", "Could not change the login item — try again later.")
+    }
+    public static var openLoginItems: String { s("打开登录项", "Open Login Items") }
+
     public static var autoLabel: String { s("自动", "Automatic") }
     public static func autoLabel(_ appName: String) -> String {
         s("自动（\(appName)）", "Automatic (\(appName))")

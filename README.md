@@ -2,6 +2,10 @@
 
 给 Finder 右键菜单加上顺手的几件事。装完即用，没有需要配置的东西。
 
+**[下载最新 DMG 安装包](https://github.com/zzzgr/right-kit/releases/latest)**
+
+支持 macOS 13 及以上版本，同时支持 Apple 芯片和 Intel Mac。
+
 ```
 右键任意文件 / 文件夹  →  右键助手 ▸  在 Ghostty 中打开
                                     在 Cursor 中打开
@@ -9,6 +13,18 @@
                                     新建文件夹
                                     复制路径
 ```
+
+## 安装
+
+1. 从 Releases 下载 `.dmg` 文件，打开后将 `RightKit` 拖进「应用程序」。
+2. 从「应用程序」打开 RightKit，按向导启用 Finder 扩展。
+3. 在 Finder 中右键文件或文件夹，选择「右键助手」。
+
+当前发布的安装包已包含应用签名，无需自行签名、编译或安装 Xcode，但尚未经过
+Apple 公证。如果 macOS 阻止首次打开，请前往「系统设置 → 隐私与安全性」，
+找到 RightKit 并点击「仍要打开」。
+
+请从「应用程序」运行，不要直接从 DMG 中运行。安装包及校验文件见 Releases。
 
 ## 产品原则
 
@@ -90,8 +106,15 @@ entitlement 而要求 provisioning profile，进而要求 Xcode 里登录 Apple 
 
 产物 `dist/RightKit-<版本>.dmg`：别人下载后双击、拖进「应用程序」即可，没有 Gatekeeper 警告。
 
-可分发的包只有这一条路：Apple Development 签名在别人机器上会被 Gatekeeper 拦，
-ad-hoc 签名则会让 pluginkit 拒绝注册 Finder 扩展。
+若使用 Apple Development 证书，可以构建未公证的安装包：
+
+```bash
+LOCAL=1 ./Scripts/release.sh      # dist/RightKit-<版本>-dev.dmg
+```
+
+接收者无需自行签名，但首次打开可能需要按上面的安装说明，在系统设置中确认。
+要避免这一步，必须使用 Developer ID 签名并完成 Apple 公证。
+不能改用 ad-hoc 签名，因为没有 TeamIdentifier 的签名会让 pluginkit 拒绝注册 Finder 扩展。
 
 ## 结构
 

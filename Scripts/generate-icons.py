@@ -203,8 +203,10 @@ def crop_to_content(
 
 
 def compose_app_icon(logo: list[list[tuple[int, int, int, int]]], size: int) -> list[bytes]:
-    """White rounded square + original-colored logo, cropped and truly centered."""
+    """Centered white plate and logo with the outer padding used by macOS app icons."""
     white = (255, 255, 255)
+    # Leave 10% transparent space on every side, including around the white plate.
+    plate_size = size * 0.80
 
     # 1) Knock out white background from raster
     cleaned: list[list[tuple[int, int, int, int]]] = []
@@ -224,8 +226,8 @@ def compose_app_icon(logo: list[list[tuple[int, int, int, int]]], size: int) -> 
     # 2) Crop to ink bbox so source left/top bias is removed
     cropped = crop_to_content(cleaned, pad_ratio=0.01)
 
-    # 3) Fit cropped logo larger into white plate (~80% of canvas)
-    target = max(1, int(size * 0.80))
+    # 3) Scale the logo with its plate, preserving the original internal proportions.
+    target = max(1, int(plate_size * 0.80))
     ch = len(cropped)
     cw = len(cropped[0]) if ch else 1
     # Keep aspect ratio
@@ -238,8 +240,8 @@ def compose_app_icon(logo: list[list[tuple[int, int, int, int]]], size: int) -> 
     ox = int(round((size - tw) / 2.0))
     oy = int(round((size - th) / 2.0))
 
-    r_app = size * 0.223
-    aa = max(size / 128.0, 0.9)
+    r_app = plate_size * 0.223
+    aa = max(plate_size / 128.0, 0.9)
     out: list[list[tuple[int, int, int, int]]] = []
 
     def sd_round_rect(px, py, cx, cy, hw, hh, r):
@@ -256,7 +258,7 @@ def compose_app_icon(logo: list[list[tuple[int, int, int, int]]], size: int) -> 
         for x in range(size):
             px, py = x + 0.5, y + 0.5
             app_c = cover(
-                sd_round_rect(px, py, size / 2, size / 2, size / 2, size / 2, r_app),
+                sd_round_rect(px, py, size / 2, size / 2, plate_size / 2, plate_size / 2, r_app),
                 aa,
             )
             if app_c <= 0:
@@ -464,12 +466,22 @@ def main() -> None:
         write_png(MENU_ICON / name, px, px, make_template_menu(menu, px))
     (MENU_ICON / "Contents.json").write_text(json.dumps(menu_contents, indent=2) + "\n")
 
-    # Status-bar item glyph (main app) — same SVG / template as MenuIcon
+    # The menu bar needs a larger glyph than Finder's 16-point context-menu icon.
+    status_template_sizes = [("status_20.png", 20), ("status_40.png", 40)]
+    status_contents = {
+        **menu_contents,
+        "images": [
+            {"filename": "status_20.png", "idiom": "mac", "scale": "1x"},
+            {"filename": "status_40.png", "idiom": "mac", "scale": "2x"},
+        ],
+    }
     STATUS_ITEM.mkdir(parents=True, exist_ok=True)
-    for name, px in menu_template_sizes:
+    for name, px in status_template_sizes:
         print(f"status {name}")
         write_png(STATUS_ITEM / name, px, px, make_template_menu(menu, px))
-    (STATUS_ITEM / "Contents.json").write_text(json.dumps(menu_contents, indent=2) + "\n")
+    (STATUS_ITEM / "Contents.json").write_text(json.dumps(status_contents, indent=2) + "\n")
+    for legacy_name in ("menu_16.png", "menu_32.png"):
+        (STATUS_ITEM / legacy_name).unlink(missing_ok=True)
 
     print("done")
 

@@ -18,7 +18,7 @@ struct SettingsView: View {
             aboutSection
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 470)
+        .frame(width: 460, height: 510)
         .onAppear {
             model.refresh()
             status.addWatcher()
@@ -109,8 +109,35 @@ struct SettingsView: View {
                 }
                 .controlSize(.small)
             }
+            launchAtLoginRow
         } header: {
             Text(Strings.sectionStatus)
+        }
+    }
+
+    /// The toggle mirrors System Settings → Login Items. When macOS has accepted the
+    /// registration but the user (or a policy) switched it off there, the toggle reads
+    /// off and a one-line hint with a button to the right pane appears beneath it.
+    private var launchAtLoginRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(Strings.launchAtLoginTitle, isOn: $model.launchAtLogin)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            if let message = model.loginItemError {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if model.loginItemState == .requiresApproval {
+                HStack(spacing: 8) {
+                    Text(Strings.launchAtLoginNeedsApproval)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button(Strings.openLoginItems) {
+                        LoginItem.openSystemSettings()
+                    }
+                    .controlSize(.small)
+                }
+            }
         }
     }
 

@@ -60,5 +60,31 @@ if [[ -z "$TEAM" || "$TEAM" == "not set" ]]; then
   echo "error: no TeamIdentifier (ad-hoc signature) — pluginkit refuses to register the extension" >&2
   exit 1
 fi
+
+# These builds have no provisioning profile. Every shared container must therefore
+# use the actual signing team's macOS prefix, and the host and extension must agree.
+python3 - "$APP" "$APPEX" "$TEAM" <<'PY'
+import plistlib
+import subprocess
+import sys
+
+app, extension, team = sys.argv[1:]
+group_sets = []
+for bundle in (app, extension):
+    result = subprocess.run(
+        ["codesign", "--display", "--entitlements", "-", "--xml", bundle],
+        check=True, capture_output=True,
+    )
+    groups = plistlib.loads(result.stdout).get("com.apple.security.application-groups", [])
+    if not groups or any(not group.startswith(team + ".") for group in groups):
+        raise SystemExit(
+            f"error: {bundle} must use app groups prefixed with {team}. "
+            "Update Preferences.appGroupID and both entitlement files together."
+        )
+    group_sets.append(set(groups))
+if group_sets[0] != group_sets[1]:
+    raise SystemExit("error: the app and Finder extension have different app groups")
+PY
+
 echo "    TeamIdentifier=$TEAM"
 printf '%s\n' "$DETAILS" | awk -F= '/^Authority=/ {print "    "$0; exit}'

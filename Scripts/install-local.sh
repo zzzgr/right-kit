@@ -49,6 +49,9 @@ TIMESTAMP=0 ./Scripts/sign-app.sh "$STAGE/RightKit.app" "${IDENTITY:-}"
 echo "==> Quitting any running instance"
 osascript -e 'tell application id "com.rightkit.app" to quit' >/dev/null 2>&1 || true
 pkill -x RightKit >/dev/null 2>&1 || true
+# Finder keeps extension workers alive independently of the menu-bar app. Stop only
+# our workers so the next right-click loads this build and its current entitlements.
+pkill -x RightKitFinderSync >/dev/null 2>&1 || true
 sleep 1
 
 [[ -d "$TARGET" ]] && { echo "==> Replacing $TARGET"; rm -rf "$TARGET"; }
