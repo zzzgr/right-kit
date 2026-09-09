@@ -1,8 +1,7 @@
 import RightKitShared
 import SwiftUI
 
-/// The app's two windows. Kept together so "which windows exist?" has a one-screen
-/// answer — there are exactly two, and neither is ever open unless the user asked.
+/// AppKit-hosted windows, opened explicitly from the menu bar or setup flow.
 @MainActor
 enum AppWindows {
     /// First-run checklist. Also reachable from settings and from the menu-bar
@@ -24,6 +23,17 @@ enum AppWindows {
             SettingsView()
                 .environmentObject(SettingsModel.shared)
                 .environmentObject(SetupStatus.shared)
+        }
+    )
+
+    static let actions = HostedWindow(
+        title: Strings.Custom.title,
+        autosaveName: "RightKitCustomActions",
+        contentSize: NSSize(width: 1100, height: 760),
+        minimumSize: CustomActionsView.minimumWindowSize,
+        content: {
+            CustomActionsView()
+                .environmentObject(CustomActionsModel.shared)
         }
     )
 }

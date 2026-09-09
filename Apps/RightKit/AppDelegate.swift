@@ -8,6 +8,7 @@ private let log = Logger(subsystem: "com.rightkit.app", category: "app")
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        _ = AppAppearance.shared
         Notifier.shared.activate()
         SetupStatus.shared.refresh()
 
@@ -34,8 +35,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Success is deliberately silent; only failures speak (see ``Notifier``).
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
+            if url.scheme?.lowercased() == "rightkit", ["import", "market"].contains(url.host?.lowercased() ?? "") {
+                AppWindows.actions.show()
+                CustomActionsModel.shared.handleMarketLink(url)
+                continue
+            }
+            if url.scheme?.lowercased() == ActionLink.scheme, url.host?.lowercased() == "custom" {
+                CustomActionsModel.shared.runFinderRequest(url)
+                continue
+            }
             guard let request = ActionLink.request(from: url) else {
-                log.notice("ignoring unrecognised url \(url.absoluteString, privacy: .public)")
+                log.notice("ignoring unrecognised URL")
                 continue
             }
             do {
@@ -45,5 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Notifier.report(error, action: request.action)
             }
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let actions = CustomActionsModel.shared
+        guard actions.resolveUnsavedChanges() else { return .terminateCancel }
+        guard actions.activeCount > 0 else { return .terminateNow }
+        actions.cancelForQuit { sender.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
     }
 }

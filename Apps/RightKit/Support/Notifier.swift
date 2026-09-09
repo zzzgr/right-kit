@@ -7,6 +7,7 @@ private let log = Logger(subsystem: "com.rightkit.app", category: "feedback")
 
 /// Key under which a notification carries its recovery route to the click handler.
 private let recoveryKey = "recovery"
+private let customActionKey = "customAction"
 
 /// Failure reporting, and only failure reporting.
 ///
@@ -36,18 +37,23 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         shared.show(title: action.settingsTitle, body: body, recovery: rightKitError?.recovery)
     }
 
-    private func show(title: String, body: String, recovery: RightKitError.Recovery?) {
+    static func reportCustom(title: String, message: String) {
+        log.error("custom action failed: \(message, privacy: .private)")
+        shared.show(title: title, body: message, recovery: nil, customAction: true)
+    }
+
+    private func show(title: String, body: String, recovery: RightKitError.Recovery?, customAction: Bool = false) {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in
             Task { @MainActor in
                 switch settings.authorizationStatus {
                 case .authorized, .provisional, .ephemeral:
-                    self.deliver(title: title, body: body, recovery: recovery)
+                    self.deliver(title: title, body: body, recovery: recovery, customAction: customAction)
                 case .notDetermined where !self.didRequestAuthorization:
                     self.didRequestAuthorization = true
                     let granted = try? await center.requestAuthorization(options: [.alert, .sound])
                     if granted == true {
-                        self.deliver(title: title, body: body, recovery: recovery)
+                        self.deliver(title: title, body: body, recovery: recovery, customAction: customAction)
                     } else {
                         self.fallback(body)
                     }
@@ -58,7 +64,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func deliver(title: String, body: String, recovery: RightKitError.Recovery?) {
+    private func deliver(title: String, body: String, recovery: RightKitError.Recovery?, customAction: Bool) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -66,6 +72,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         if let recovery {
             content.userInfo = [recoveryKey: recovery.rawIdentifier]
         }
+        if customAction { content.userInfo[customActionKey] = true }
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
@@ -74,7 +81,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// the detail in the log.
     private func fallback(_ body: String) {
         NSSound.beep()
-        log.error("notifications unavailable, beeped instead: \(body, privacy: .public)")
+        log.error("notifications unavailable, beeped instead: \(body, privacy: .private)")
     }
 
     // MARK: - Click routing
@@ -93,7 +100,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let raw = response.notification.request.content.userInfo[recoveryKey] as? String
+        let isCustom = response.notification.request.content.userInfo[customActionKey] as? Bool == true
         Task { @MainActor in
+            if isCustom {
+                CustomActionsModel.shared.showRuns()
+                AppWindows.actions.show()
+                completionHandler()
+                return
+            }
             switch raw.flatMap(RightKitError.Recovery.init(rawIdentifier:)) {
             case .filesAndFolders:
                 SystemSettings.openFilesAndFolders()

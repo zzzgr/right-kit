@@ -7,6 +7,15 @@ build/
 dist/
 .build/
 .swiftpm/
+*.xcresult/
+
+# Local configuration / signing credentials
+.env*
+!.env.example
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
 
 # Products
 *.app
@@ -18,3 +27,7 @@ dist/
 .DS_Store
 .idea/
 *.swp
+*.log
+__pycache__/
+*.py[cod]
+.venv/

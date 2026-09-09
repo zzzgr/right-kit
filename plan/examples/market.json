@@ -1,0 +1,24 @@
+{
+  "format": "rightkit.market",
+  "schemaVersion": 1,
+  "id": "com.example.market",
+  "name": "RightKit 示例市场",
+  "homepage": "https://market.example.com",
+  "generatedAt": "2026-09-07T00:00:00Z",
+  "items": [
+    {
+      "id": "example.file.sha256",
+      "version": "1.0.0",
+      "title": "计算 SHA-256",
+      "summary": "计算所选文件的 SHA-256，并在运行日志中输出校验值与文件路径。",
+      "language": "python",
+      "target": "files",
+      "tags": ["文件", "校验"],
+      "symbol": "number",
+      "packageURL": "https://market.example.com/rightkit/actions/example.file.sha256/1.0.0.json",
+      "sha256": "f177b0d95537d3baacba101f6718520ff3d0398d355be492dd56619af5d4eb72",
+      "updatedAt": "2026-09-07T00:00:00Z"
+    }
+  ],
+  "next": null
+}

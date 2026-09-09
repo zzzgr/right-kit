@@ -27,6 +27,7 @@ LOG="$ROOT/build/xcodebuild.log"
 echo "==> Building ($CONFIG, unsigned)"
 mkdir -p "$(dirname "$LOG")"
 if ! xcodebuild -project RightKit.xcodeproj -scheme RightKit -configuration "$CONFIG" \
+  -destination 'generic/platform=macOS' \
   -derivedDataPath "$DERIVED" \
   ONLY_ACTIVE_ARCH=YES \
   CODE_SIGNING_ALLOWED=NO ENTITLEMENTS_REQUIRED=NO \
@@ -48,7 +49,16 @@ TIMESTAMP=0 ./Scripts/sign-app.sh "$STAGE/RightKit.app" "${IDENTITY:-}"
 
 echo "==> Quitting any running instance"
 osascript -e 'tell application id "com.rightkit.app" to quit' >/dev/null 2>&1 || true
-pkill -x RightKit >/dev/null 2>&1 || true
+# A user can cancel quitting to keep an unsaved draft. Never replace or force-kill
+# that running copy; finish the prompt and rerun this script instead.
+for _ in {1..15}; do
+  pgrep -x RightKit >/dev/null 2>&1 || break
+  sleep 1
+done
+if pgrep -x RightKit >/dev/null 2>&1; then
+  echo "error: RightKit is still running. Save or finish its open dialog, then retry installation." >&2
+  exit 1
+fi
 # Finder keeps extension workers alive independently of the menu-bar app. Stop only
 # our workers so the next right-click loads this build and its current entitlements.
 pkill -x RightKitFinderSync >/dev/null 2>&1 || true

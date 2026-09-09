@@ -20,8 +20,14 @@ final class FinderSyncExtension: FIFinderSync {
     private let preferences = Preferences.shared
 
     /// Snapshot from the last `menu(for:)` — see fact 2 above.
-    private var menuActions: [MenuAction] = []
+    private enum ResolvedAction {
+        case builtIn(MenuAction)
+        case custom(CustomMenuItem)
+    }
+    private var menuActions: [ResolvedAction] = []
     private var menuContext = ActionContext(targets: [], container: nil)
+    private lazy var customStore = try? CustomActionStore.sharedStore()
+    private let customMenuCache = CustomMenuCache()
 
     private var volumeObservers: [NSObjectProtocol] = []
     private var appIconCache: [String: NSImage] = [:]
@@ -88,15 +94,20 @@ final class FinderSyncExtension: FIFinderSync {
             $0.isAvailable(in: context, preferences: preferences)
         }
 
+        var customActions: [CustomMenuItem] = []
+        if let customStore {
+            do { customActions = try customMenuCache.load(from: customStore).filter { $0.isAvailable(in: context) } }
+            catch { log.error("could not load custom menu: \(error.localizedDescription, privacy: .private)") }
+        }
         menuContext = context
-        menuActions = actions
+        menuActions = actions.map(ResolvedAction.builtIn) + customActions.map(ResolvedAction.custom)
         ExtensionCheckIn.recordMenu(preferences: preferences)
 
         log.notice("menu kind=\(menuKind.rawValue) targets=\(context.targets.count) actions=\(actions.count)")
 
         // Nothing usable here: contribute no item at all rather than an empty
         // or all-greyed-out submenu.
-        guard !actions.isEmpty else { return root }
+        guard !menuActions.isEmpty else { return root }
 
         let submenu = NSMenu(title: Strings.appName)
         for (index, action) in actions.enumerated() {
@@ -111,6 +122,28 @@ final class FinderSyncExtension: FIFinderSync {
             submenu.addItem(item)
         }
 
+        if !actions.isEmpty && !customActions.isEmpty { submenu.addItem(.separator()) }
+        var groups: [String: NSMenu] = [:]
+        for (index, action) in customActions.enumerated() {
+            let destination: NSMenu
+            if action.group.isEmpty { destination = submenu }
+            else if let existing = groups[action.group] { destination = existing }
+            else {
+                let group = NSMenu(title: action.group)
+                let parent = NSMenuItem(title: action.group, action: nil, keyEquivalent: "")
+                parent.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+                parent.submenu = group
+                submenu.addItem(parent)
+                groups[action.group] = group
+                destination = group
+            }
+            let item = NSMenuItem(title: action.title, action: #selector(performMenuAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = actions.count + index
+            item.image = icon(for: action.icon)
+            destination.addItem(item)
+        }
+
         let parent = NSMenuItem(title: Strings.appName, action: nil, keyEquivalent: "")
         parent.image = brandGlyph
         parent.submenu = submenu
@@ -123,7 +156,7 @@ final class FinderSyncExtension: FIFinderSync {
             log.error("unresolved menu item tag=\(sender.tag)")
             return
         }
-        let action = menuActions[sender.tag]
+        let resolved = menuActions[sender.tag]
 
         // Re-read the selection: the user may have changed it between the menu
         // being built and the click landing.
@@ -133,6 +166,26 @@ final class FinderSyncExtension: FIFinderSync {
             targetedURL: controller.targetedURL()
         )
         let context = fresh.isEmpty ? menuContext : fresh
+
+        switch resolved {
+        case .custom(let action):
+            do {
+                guard let customStore,
+                      let current = try customMenuCache.load(from: customStore).first(where: { $0.id == action.id }),
+                      current.isAvailable(in: context) else { throw CustomActionError.message(Strings.Custom.actionUnavailable) }
+                guard try CustomActionRequest.handOff(CustomActionRequest(actionID: current.id, context: context), store: customStore) else {
+                    throw CustomActionError.message(Strings.Custom.invalidRequest)
+                }
+            } catch {
+                log.error("custom handoff failed: \(error.localizedDescription, privacy: .private)")
+                NSSound.beep()
+            }
+        case .builtIn(let action):
+            performBuiltIn(action, context: context)
+        }
+    }
+
+    private func performBuiltIn(_ action: MenuAction, context: ActionContext) {
 
         if action.runsInExtension {
             do {
@@ -156,6 +209,25 @@ final class FinderSyncExtension: FIFinderSync {
     }
 
     // MARK: - Icons
+
+    private func icon(for icon: CustomActionIcon) -> NSImage? {
+        switch icon {
+        case .symbol(let name):
+            let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+                ?? NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
+            image?.isTemplate = true
+            return image?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+        case .image(let name):
+            let key = "custom:\(name)"
+            if let cached = appIconCache[key] { return cached }
+            guard let url = customStore?.iconURL(named: name), let image = NSImage(contentsOf: url) else { return nil }
+            let side = max(image.size.width, image.size.height, 1)
+            image.size = NSSize(width: image.size.width * 16 / side, height: image.size.height * 16 / side)
+            if appIconCache.count > 256 { appIconCache.removeAll() }
+            appIconCache[key] = image
+            return image
+        }
+    }
 
     /// The RightKit glyph next to the parent row. The asset catalogue carries 1× and 2×;
     /// asking for a 16pt size lets AppKit pick the sharp one.

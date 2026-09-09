@@ -1,0 +1,48 @@
+{
+  "format": "rightkit.action",
+  "schemaVersion": 1,
+  "id": "example.file.sha256",
+  "version": "1.0.0",
+  "summary": "计算所选文件的 SHA-256，并在运行日志中输出校验值与文件路径。",
+  "description": "使用 Python 标准库读取所选文件，不修改文件内容。\n\n这是动作包协议样本，供未来市场项目验证复制与导入流程。",
+  "publisher": {
+    "id": "example",
+    "name": "示例发布者",
+    "url": "https://market.example.com"
+  },
+  "license": "MIT",
+  "homepage": "https://market.example.com/actions/example.file.sha256",
+  "tags": ["文件", "校验"],
+  "minRightKitVersion": "1.2.0",
+  "minMacOSVersion": "13.0",
+  "action": {
+    "title": "计算 SHA-256",
+    "group": "文件工具",
+    "icon": {
+      "kind": "symbol",
+      "name": "number"
+    },
+    "rules": {
+      "target": "files",
+      "fileType": "any",
+      "extensions": [],
+      "selection": "any"
+    },
+    "language": "python",
+    "script": {
+      "source": "inline",
+      "content": "import hashlib\nimport sys\nfrom pathlib import Path\n\nfor argument in sys.argv[1:]:\n    path = Path(argument)\n    digest = hashlib.sha256()\n    with path.open(\"rb\") as source:\n        for chunk in iter(lambda: source.read(1024 * 1024), b\"\"):\n            digest.update(chunk)\n    print(f\"{digest.hexdigest()}  {path}\")\n"
+    },
+    "batchMode": "together",
+    "workingDirectory": {
+      "mode": "selection"
+    },
+    "timeoutSeconds": 120,
+    "environment": []
+  },
+  "requirements": {
+    "python": ">=3.9",
+    "pythonPackages": [],
+    "commands": []
+  }
+}

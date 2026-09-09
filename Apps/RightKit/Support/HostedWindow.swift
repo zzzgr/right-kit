@@ -3,7 +3,7 @@ import SwiftUI
 
 /// A plain `NSWindow` hosting a SwiftUI view, sized by its content.
 ///
-/// Both of RightKit's windows use this instead of SwiftUI `Settings`/`Window` scenes.
+/// RightKit's windows use this instead of SwiftUI `Settings`/`Window` scenes.
 /// In a menu-bar-only app (`LSUIElement`) those scenes cannot be opened imperatively
 /// from AppKit, and reaching the Settings scene means sending a private selector that
 /// SwiftUI has already objected to once. One small helper removes that whole class of
@@ -13,6 +13,8 @@ final class HostedWindow: NSObject, NSWindowDelegate {
     private let title: String
     private let autosaveName: String
     private let onUserClose: (() -> Void)?
+    private let contentSize: NSSize?
+    private let minimumSize: NSSize?
     private let makeContentController: () -> NSViewController
 
     private var window: NSWindow?
@@ -24,12 +26,22 @@ final class HostedWindow: NSObject, NSWindowDelegate {
         title: String,
         autosaveName: String,
         onUserClose: (() -> Void)? = nil,
+        contentSize: NSSize? = nil,
+        minimumSize: NSSize? = nil,
         content: @escaping () -> Content
     ) {
         self.title = title
         self.autosaveName = autosaveName
         self.onUserClose = onUserClose
-        self.makeContentController = { NSHostingController(rootView: content()) }
+        self.contentSize = contentSize
+        self.minimumSize = minimumSize
+        self.makeContentController = {
+            let controller = NSHostingController(rootView: content().tint(.blue))
+            // Keep the view's minimum size enforced without adopting a pane's
+            // preferred height or maximum size when switching tabs.
+            if minimumSize != nil { controller.sizingOptions = [.minSize] }
+            return controller
+        }
         super.init()
     }
 
@@ -46,10 +58,24 @@ final class HostedWindow: NSObject, NSWindowDelegate {
         let window = NSWindow(contentViewController: makeContentController())
         window.title = title
         window.styleMask = [.titled, .closable]
+        if minimumSize != nil {
+            window.styleMask.insert(.resizable)
+        }
+        if let contentSize { window.setContentSize(contentSize) }
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.setFrameAutosaveName(autosaveName)
-        window.center()
+        let restoredFrame = window.setFrameUsingName(autosaveName)
+        if let minimumSize {
+            window.contentMinSize = minimumSize
+            // A frame saved by an older version can be smaller than today's minimum.
+            let size = window.contentRect(forFrameRect: window.frame).size
+            if size.width < minimumSize.width || size.height < minimumSize.height {
+                window.setContentSize(NSSize(width: max(size.width, minimumSize.width),
+                                             height: max(size.height, minimumSize.height)))
+            }
+        }
+        if !restoredFrame { window.center() }
         window.makeKeyAndOrderFront(nil)
         self.window = window
     }

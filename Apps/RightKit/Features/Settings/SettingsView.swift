@@ -10,15 +10,30 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var model: SettingsModel
     @EnvironmentObject private var status: SetupStatus
+    @ObservedObject private var appearance = AppAppearance.shared
 
     var body: some View {
         Form {
             menuSection
+            Section {
+                Picker(Strings.appearance, selection: $appearance.mode) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.appearance")
+                HStack {
+                    Text(Strings.Custom.title)
+                    Spacer()
+                    Button(Strings.Custom.open) { AppWindows.actions.show() }
+                }
+            }
             statusSection
             aboutSection
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 510)
+        .frame(width: 460, height: 680)
         .onAppear {
             model.refresh()
             status.addWatcher()
@@ -47,10 +62,6 @@ struct SettingsView: View {
             }
         } header: {
             Text(Strings.sectionMenu)
-        } footer: {
-            Text(Strings.sectionMenuFooter)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
         }
     }
 

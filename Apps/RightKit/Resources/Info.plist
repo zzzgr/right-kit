@@ -27,6 +27,15 @@
 	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<!-- User-configured markets support HTTP as well as HTTPS. Requests still
+	     validate their origin, response size, and package digest. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>「右键助手」需要连接你配置的局域网动作市场，以读取动作、图标和版本信息。</string>
 	<!--
 	  Purpose strings for the folder-access prompts macOS shows the first time an
 	  action touches a protected folder. RightKit never pre-requests them.

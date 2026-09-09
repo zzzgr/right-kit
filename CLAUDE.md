@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # RightKit / 右键助手
 
-macOS Finder right-click assistant. Five actions: open in terminal, open in editor,
-new file, new folder, copy path. Menu-bar app (`LSUIElement`, non-sandboxed) plus a
+macOS Finder right-click assistant. Five built-in actions: open in terminal, open in editor,
+new file, new folder, copy path, plus configurable Python/Shell actions. Menu-bar app (`LSUIElement`, non-sandboxed) plus a
 sandboxed Finder Sync extension. Product rules live in `README.md` — read it before
 changing setup, permissions or the settings window.
 
@@ -15,7 +15,7 @@ changing setup, permissions or the settings window.
 |---|---|
 | Bundle IDs | `com.rightkit.app` / `com.rightkit.app.FinderSync` / `com.rightkit.app.shared` |
 | App Group | `SAXZHR4HFD.com.rightkit.app` (single constant: `Preferences.appGroupID`, must match both entitlements) |
-| URL scheme | `rightkit://run?action=…&target=…&container=…` |
+| URL scheme | Built-ins: `rightkit://run?action=…&target=…&container=…`; scripts: `rightkit://custom?ticket=<UUID>`; preview: `rightkit://import?url=…&market=…&sha256=…`; subscribe: `rightkit://market?url=…` |
 | Min macOS | 13.0 |
 | Version | `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in `project.yml` |
 | Team | `SAXZHR4HFD` |
@@ -80,6 +80,80 @@ resolves the action by `tag`, then `ActionLink.handOff` opens `rightkit://run?�
 the exception (`MenuAction.runsInExtension`) — it writes the pasteboard in the extension
 and only falls back to the handoff on failure.
 
+**Custom actions.** `CustomActionStore` writes one atomic, versioned JSON catalog in the
+existing App Group. Finder caches only its `CustomMenuItem` projection and immutable icon
+PNGs, filters every selected item, and resolves clicks using the same `tag` snapshot as
+built-ins. Groups are nested within the one RightKit submenu. Finder writes a short-lived,
+single-use request ticket; the host claims it atomically, reloads the saved action and
+rechecks availability. Never accept script text, arbitrary action IDs or file paths from
+a bare custom-action URL. Never run scripts or read their external files in the extension.
+
+New actions start as an empty `CustomAction` in the configuration tab. Do not add
+built-in demo scripts or a template picker. Keep the editor compact: usage details
+belong in `Docs/CustomActions.md` or tooltips; show errors and changing state when needed.
+The menu-bar menu exposes Settings and Quit; access custom actions and running tasks
+through Settings → Custom Actions.
+Marketplace and portable import are implemented. See `Docs/MarketIntegration.md` for
+the workflow and local integration checks; `plan/README.md` records the original design.
+
+**Market imports.** `MarketHTTPClient` validates same-origin requests, bounded response
+sizes, SHA-256 hashes and paginated catalogs. `MarketService` loads one query page at a
+time (20 items by default, with 50/100 options), binds cached pages and ETags to the exact
+URL, and ignores stale query results. Search and filters run on the server; update-only
+queries target at most 100 installed IDs before local version filtering and pagination.
+Legacy static catalogs without pagination metadata retain bounded full-snapshot loading.
+Direct links bind to a market only after verifying the catalog or release
+metadata. Both Debug and Release support HTTP and HTTPS markets, including LAN
+addresses. ATS permits HTTP in the host app; origin, redirect, size, and digest
+validation still apply to every market request.
+Larger, centered top-level tabs switch between My Actions and Action Market. Only My Actions uses a
+split view: the action list on the left and the selected editor (or an empty pane) on
+the right. The market fills the content width and keeps action details in a sheet.
+The local action sidebar also paginates without discarding the active draft. Page-size
+controls use compact menu pickers. The sidebar places New / Duplicate / Delete above
+a single pagination row containing page size, position, and Previous / Next controls.
+The window and view share a 960 × 650 minimum content size; restored frames are clamped
+to that minimum. The icon row shows only the current image and the
+icon-library button. Users choose from 64 categorized SF Symbols with localized names;
+there are no symbol-name or local-image inputs. Preserve images from existing and
+market-imported actions until the user chooses a replacement from the library.
+There is no Recent Runs button; history remains inside Manual Test.
+`rightkit://import` immediately opens the shared loading/preview sheet, with visible
+failure and retry states. It never runs a script. Importing stages an editable
+draft; saving is the existing explicit step that updates the Finder catalog.
+
+Update identity is the canonical market URL plus the package ID. `ActionPackageUpdate`
+performs a three-way merge against the last imported baseline, preserving local runtime
+configuration and compatible secret references. Independent copies retain provenance
+but set `tracksUpdates = false`. Legacy clipboard imports and direct imports do not acquire market identity
+from a matching package ID alone. Export omits secret values and machine-specific paths.
+
+One market URL is configured in the Market Settings sheet, separate from browsing.
+Edited URLs are verified before replacing the current source and cached catalog.
+In-flight responses from an old URL are ignored, and the latest configuration request
+wins. Importing a different market's action does not replace an existing configuration.
+Legacy multi-market settings keep the first valid source and back up the original file
+as `sources.legacy.json`. Installed actions retain their original market identity.
+The app has no clipboard import UI or clipboard monitoring; legacy clipboard provenance
+remains decodable for previously saved actions. Appearance follows the system by default
+and can be changed in Settings without changing Finder's appearance. Hosted windows
+use native blue control tint, not a primary-text tint.
+
+`ScriptRunner` is shared by Finder runs and manual draft tests. It uses argv, never shell
+interpolation, and a new POSIX process group with drained, bounded stdout/stderr. Stop,
+timeout, shell completion and app quit clean up ordinary children; deliberately detached
+daemons are outside this contract. Python is local/selected, never downloaded automatically.
+`PythonInterpreter` honors an explicit interpreter first, then `VIRTUAL_ENV`, then
+the dedicated `~/.venvs/rightkit` environment, before PATH and developer-tool locations.
+Keep the selected symlink path intact so Python loads that venv's dependencies.
+Timeout covers the full batch; per-item mode stops on the first failure.
+
+Secret values are omitted by `ScriptEnvironmentVariable.Codable`; the host stores them in
+Keychain. Edited secrets get new IDs before committing the catalog so a failed save cannot
+overwrite credentials referenced by the old catalog. Read secrets only when running an
+action, not when browsing Finder or opening settings. Logs redact exact secret values and
+are retained in memory for the 20 latest runs. See `Docs/CustomActions.md` for the contract.
+
 **Why handoff.** The appex is sandboxed and can be suspended the moment a menu handler
 returns. Anything touching files, TCC or LaunchServices must run in the host.
 
@@ -133,7 +207,7 @@ Do not "simplify" these away; each one was a bug once.
   `Package.swift` exists only for `swift test`.
 - **No SwiftUI `Settings`/`Window` scenes.** In an `LSUIElement` app they cannot be
   opened imperatively from AppKit, and reaching the Settings scene needs the private
-  `showSettingsWindow:` selector that SwiftUI now objects to. Both windows go through
+  `showSettingsWindow:` selector that SwiftUI now objects to. All windows go through
   `HostedWindow` (`Support/HostedWindow.swift`), registered in `AppWindows`.
 - **The status item's first position is seeded.** AppKit appends a status item with no
   remembered position at the far *left* of the third-party area, which is where Ice /
@@ -147,7 +221,8 @@ Do not "simplify" these away; each one was a bug once.
 
 ### Authorization model
 
-- **Finder extension toggle** is the only permission the product requires.
+- **Finder extension toggle** is the only required setup permission. Custom scripts
+  may access protected resources when explicitly run; no access is pre-requested.
   `SetupStatus.extensionEnabled = FIFinderSyncController.isExtensionEnabled || heartbeat.isLive()`
   — two cheap signals, no `pluginkit` subprocess, no `.unknown` state. Either counts as
   on, so a stale API read cannot warn about something that demonstrably works.
@@ -174,7 +249,7 @@ Do not "simplify" these away; each one was a bug once.
 
 Shared:
 - `MenuAction` — one enum carrying id, titles, symbol, app icon and availability. Adding
-  an action = adding a case and following the compiler. There is no registry and no
+  a built-in action = adding a case and following the compiler. There is no registry and no
   parallel ID table.
 - `TerminalApp` / `EditorApp` (`LaunchApps.swift`) — supported apps, their bundle IDs
   and the "Auto" order. `resolve(_:)` falls back to Auto when the chosen app is gone.
@@ -199,7 +274,9 @@ App:
   refresh on `didBecomeActive`.
 - `SettingsModel` — observable face of `Preferences` + installed-app snapshot.
 - `Notifier` — failure notifications and their click routing. Nothing else reports.
-- `AppWindows` — the two `HostedWindow`s.
+- `CustomActionsModel` — drafts, catalog edits, Keychain references, samples, at most
+  three concurrent tasks and the last 20 run records. Manual tests never auto-save.
+- `AppWindows` — setup, settings and the resizable custom-actions `HostedWindow`s.
 - `StatusItemPlacement` — initial menu-bar position and legacy seed migration (see above).
 
 ## Conventions

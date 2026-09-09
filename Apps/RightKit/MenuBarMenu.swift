@@ -1,8 +1,7 @@
 import RightKitShared
 import SwiftUI
 
-/// The status-item dropdown: two commands, plus a warning line that only exists when
-/// something is actually wrong.
+/// Settings and Quit, with a warning only when the extension is off.
 struct MenuBarMenu: View {
     @EnvironmentObject private var status: SetupStatus
 
