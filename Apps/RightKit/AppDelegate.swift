@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         SetupStatus.shared.refresh()
         if SetupStatus.shared.isReady {
-            AppWindows.settings.show()
+            AppNavigation.shared.show(.menu)
         } else {
             AppWindows.setup.show()
         }
@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             if url.scheme?.lowercased() == "rightkit", ["import", "market"].contains(url.host?.lowercased() ?? "") {
-                AppWindows.actions.show()
+                AppNavigation.shared.show(.actions)
                 CustomActionsModel.shared.handleMarketLink(url)
                 continue
             }

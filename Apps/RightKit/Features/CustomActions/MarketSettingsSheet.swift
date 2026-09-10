@@ -55,7 +55,7 @@ struct MarketSettingsSheet: View {
                 }
                 Spacer(minLength: 12)
                 if let date = market.source?.refreshedAt {
-                    Text(Strings.Custom.marketLastRefreshed(date.formatted(date: .abbreviated, time: .shortened)))
+                    Text(Strings.Custom.marketLastRefreshed(Strings.dateTime(date)))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 HStack {

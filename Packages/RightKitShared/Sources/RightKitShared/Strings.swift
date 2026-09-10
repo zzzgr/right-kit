@@ -14,6 +14,28 @@ public enum Strings {
         zh ? chinese : english
     }
 
+    // MARK: - Dates
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static let dateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
+
+    /// `2026-01-01`, in the local time zone.
+    public static func day(_ date: Date) -> String { dayFormatter.string(from: date) }
+
+    /// `2026-01-01 00:00:00`, in the local time zone.
+    public static func dateTime(_ date: Date) -> String { dateTimeFormatter.string(from: date) }
+
     // MARK: - App
 
     public static var appName: String { s("右键助手", "RightKit") }
@@ -157,13 +179,47 @@ public enum Strings {
     public static var versionTitle: String { s("版本", "Version") }
     public static var authorTitle: String { s("作者", "Author") }
 
+    // MARK: - Main window
+
+    public static var sectionGeneral: String { s("通用", "General") }
+    public static var menuPreview: String { s("菜单预览", "Menu Preview") }
+    public static var menuPreviewEmpty: String {
+        s(
+            "没有启用任何菜单项，右键菜单中不会出现「右键助手」。",
+            "No menu items are enabled, so RightKit stays out of the Finder menu."
+        )
+    }
+    public static var extensionWorkingDetail: String {
+        s("扩展已启用，并且已经在 Finder 中弹出过菜单。", "Enabled, and the menu has already opened in Finder.")
+    }
+    public static var extensionEnabledDetail: String {
+        s(
+            "扩展已启用。在 Finder 中右键任意文件并选择「右键助手」即可验证。",
+            "Enabled. Right-click any file in Finder and choose RightKit to verify."
+        )
+    }
+    public static var extensionDisabledDetail: String {
+        s(
+            "在「系统设置 → 通用 → 登录项与扩展 → Finder 扩展」中勾选「右键助手」。",
+            "Tick RightKit in System Settings → General → Login Items & Extensions → Finder Extensions."
+        )
+    }
+    public static var githubLink: String { s("GitHub 项目", "GitHub Project") }
+    public static var guideLink: String { s("自定义动作指南", "Custom Actions Guide") }
+    public static var marketWebsite: String { s("市场网页", "Market Website") }
+    public static var releasesLink: String { s("下载最新版本", "Latest Release") }
+    public static var supportedApps: String { s("支持的 App", "Supported Apps") }
+
     // MARK: - Menu bar
 
     public static var menuSettings: String { s("设置…", "Settings…") }
+    public static var menuOpenActions: String { s("我的动作…", "My Actions…") }
+    public static var menuOpenMarket: String { s("动作市场…", "Action Market…") }
     public static var menuQuit: String { s("退出右键助手", "Quit RightKit") }
     public static var menuExtensionDisabled: String {
         s("Finder 扩展未启用", "Finder extension not enabled")
     }
+    public static var menuStatusWorking: String { s("右键菜单正常", "Menu is working") }
 
     // MARK: - Custom actions
 
@@ -171,6 +227,29 @@ public enum Strings {
         private static func t(_ zh: String, _ en: String) -> String { Strings.s(zh, en) }
         public static var title: String { t("自定义动作", "Custom Actions") }
         public static var open: String { t("打开…", "Open…") }
+        public static var searchActions: String { t("搜索动作", "Search Actions") }
+        public static var emptyActionsTitle: String { t("还没有自定义动作", "No Custom Actions Yet") }
+        public static var emptyActionsDetail: String {
+            t("把 Python 或 Shell 脚本放进右键菜单，或从动作市场导入现成的动作。",
+              "Put a Python or Shell script in the right-click menu, or import a ready-made action from the market.")
+        }
+        public static var browseMarket: String { t("浏览动作市场", "Browse the Market") }
+        public static var noMatchingActions: String { t("没有匹配的动作", "No matching actions") }
+        public static var selectActionTitle: String { t("选择一个动作", "Select an Action") }
+        public static var selectActionDetail: String {
+            t("在左侧选择动作查看设置、脚本和测试结果。", "Pick an action on the left to see its settings, script and test runs.")
+        }
+        public static var fromMarket: String { t("来自市场", "From market") }
+        public static var separateCopy: String { t("独立副本", "Separate copy") }
+        public static func actionCount(_ count: Int) -> String { t("\(count) 个动作", "\(count) actions") }
+        public static var viewDetails: String { t("查看详情", "View Details") }
+        public static var runningTasks: String { t("运行中的任务", "Running Tasks") }
+        public static var moreActions: String { t("更多操作", "More") }
+        public static var testFiles: String { t("测试文件", "Test Files") }
+        public static var noTestFiles: String {
+            t("选择几个文件或文件夹作为输入，脚本会像在 Finder 中一样运行。",
+              "Choose a few files or folders as input. The script runs exactly as it would from Finder.")
+        }
         public static var newAction: String { t("新建动作", "New Action") }
         public static var untitled: String { t("未命名动作", "Untitled Action") }
         public static var duplicate: String { t("复制动作", "Duplicate Action") }
@@ -411,7 +490,6 @@ public enum Strings {
         public static var noVersionHistory: String { t("此来源未提供版本记录。", "This source does not provide version history.") }
         public static var loadMoreVersions: String { t("加载更早版本", "Load Earlier Versions") }
         public static var viewOnMarket: String { t("打开网页详情", "View on Market") }
-        public static var importReview: String { t("导入后请检查配置并保存。保存前不会添加到 Finder 菜单。", "Review the imported draft and save it to add it to Finder.") }
         public static var preserveLocalEdits: String { t("发生冲突时保留本地改动", "Keep Local Edits When They Conflict") }
         public static var localConfigurationKept: String { t("保留本机解释器、目录路径和仍在使用的密钥配置。", "Your interpreter, directory path, and compatible secret settings are kept.") }
         public static var updateAsDraft: String { t("更新为草稿", "Update as Draft") }

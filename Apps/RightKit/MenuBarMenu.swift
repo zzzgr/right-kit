@@ -1,7 +1,7 @@
 import RightKitShared
 import SwiftUI
 
-/// Settings and Quit, with a warning only when the extension is off.
+/// Menu-bar dropdown: a health line, the main-window sections, Quit.
 struct MenuBarMenu: View {
     @EnvironmentObject private var status: SetupStatus
 
@@ -14,9 +14,17 @@ struct MenuBarMenu: View {
         }
 
         Button(Strings.menuSettings) {
-            AppWindows.settings.show()
+            AppNavigation.shared.show(.general)
         }
         .keyboardShortcut(",", modifiers: .command)
+
+        Button(Strings.menuOpenActions) {
+            AppNavigation.shared.show(.actions)
+        }
+
+        Button(Strings.menuOpenMarket) {
+            AppNavigation.shared.show(.market)
+        }
 
         Divider()
 

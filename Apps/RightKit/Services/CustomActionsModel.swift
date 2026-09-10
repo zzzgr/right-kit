@@ -17,8 +17,6 @@ struct CustomActionRun: Identifiable {
     var sourceTitle: String { source == .manual ? Strings.Custom.testRun : Strings.Custom.finderRun }
 }
 
-enum CustomActionsSection: Hashable { case mine, market }
-
 @MainActor
 final class CustomActionsModel: ObservableObject {
     static let shared = CustomActionsModel()
@@ -32,7 +30,6 @@ final class CustomActionsModel: ObservableObject {
     @Published private(set) var runs: [CustomActionRun] = []
     @Published var selectedRunID: UUID?
     @Published var editorTab: CustomActionsTab = .configuration
-    @Published var section: CustomActionsSection = .mine
     @Published var importRequest: ActionImportRequest?
     private var importTask: Task<Void, Never>?
     private var importLoader: (@MainActor () async throws -> PackageImportPreview)?
@@ -64,7 +61,7 @@ final class CustomActionsModel: ObservableObject {
             }
         } catch {
             if url.host?.lowercased() == "market" {
-                section = .market
+                AppNavigation.shared.show(.market)
                 MarketService.shared.error = error.localizedDescription
             } else { presentImportFailure(error.localizedDescription) }
         }
@@ -118,7 +115,7 @@ final class CustomActionsModel: ObservableObject {
     }
 
     func openMarketURL(_ url: URL) {
-        section = .market
+        AppNavigation.shared.show(.market)
         Task { await MarketService.shared.configure(url.absoluteString) }
     }
 
@@ -145,7 +142,8 @@ final class CustomActionsModel: ObservableObject {
             ActionPackageUpdate.matches($0.packageMetadata, packageID: package.id, source: source, marketURL: marketURL, sourceURL: sourceURL)
         }
         if let previous, previous.packageMetadata?.version == package.version {
-            draft = previous; section = .mine; editorTab = .configuration
+            draft = previous; editorTab = .configuration
+            AppNavigation.shared.show(.actions)
             return true
         }
         guard previous != nil || actions.count < 100 else { throw CustomActionError.message(Strings.Custom.invalidCatalog) }
@@ -174,8 +172,8 @@ final class CustomActionsModel: ObservableObject {
         metadata.tracksUpdates = !asCopy
         imported.packageMetadata = metadata
         draft = imported
-        section = .mine
         editorTab = .configuration
+        AppNavigation.shared.show(.actions)
         selectedRunID = nil
         error = nil
         notice = Strings.Custom.importedPackage(package.action.title, package.version)
@@ -195,9 +193,9 @@ final class CustomActionsModel: ObservableObject {
     var selectedIndex: Int? { actions.firstIndex { $0.id == draft?.id } }
 
     func showRuns() {
-        section = .mine
         editorTab = .test
         selectedRunID = runs.first(where: { !$0.isFinished })?.id ?? selectedRunID ?? runs.first?.id
+        AppNavigation.shared.show(.actions)
     }
 
     func reload() {
@@ -225,7 +223,6 @@ final class CustomActionsModel: ObservableObject {
     func create() {
         guard canEdit, resolveUnsavedChanges() else { return }
         guard actions.count < 100 else { error = Strings.Custom.invalidCatalog; return }
-        section = .mine
         draft = CustomAction()
         editorTab = .configuration
         selectedRunID = nil
@@ -326,15 +323,36 @@ final class CustomActionsModel: ObservableObject {
     }
 
     func move(_ offset: Int) {
-        guard resolveUnsavedChanges(), let index = selectedIndex, let store else { return }
+        guard let index = selectedIndex else { return }
         let destination = index + offset
         guard actions.indices.contains(destination) else { return }
+        move(from: IndexSet(integer: index), to: destination > index ? destination + 1 : destination)
+    }
+
+    /// Drag-and-drop reorder from the list. Uses `List.onMove` semantics: `destination`
+    /// is the index *before* removal, exactly as SwiftUI hands it over.
+    func move(from source: IndexSet, to destination: Int) {
+        guard resolveUnsavedChanges(), let store else { return }
         var updated = actions
-        updated.swapAt(index, destination)
+        updated.move(fromOffsets: source, toOffset: destination)
+        guard updated != actions else { return }
         do {
             try store.save(updated)
             actions = updated
             clearFeedback()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    /// Flip enabled state straight from the list without opening the editor. A
+    /// dirty draft for the same action is kept in sync so the toggle never fights it.
+    func setEnabled(_ id: UUID, _ enabled: Bool) {
+        guard canEdit, let store, let index = actions.firstIndex(where: { $0.id == id }) else { return }
+        var updated = actions
+        updated[index].isEnabled = enabled
+        do {
+            try store.save(updated)
+            actions = updated
+            if draft?.id == id { draft?.isEnabled = enabled }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -403,6 +421,9 @@ final class CustomActionsModel: ObservableObject {
         case .image(let name):
             if let cached = imageCache[name] { return cached }
             if let url = store?.iconURL(named: name), let image = NSImage(contentsOf: url) {
+                // Action icons are line art: draw them as templates so they take the
+                // same ink as SF Symbols and match the market and Finder menu.
+                image.isTemplate = true
                 imageCache[name] = image
                 return image
             }

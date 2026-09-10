@@ -104,7 +104,6 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         Task { @MainActor in
             if isCustom {
                 CustomActionsModel.shared.showRuns()
-                AppWindows.actions.show()
                 completionHandler()
                 return
             }
@@ -112,7 +111,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             case .filesAndFolders:
                 SystemSettings.openFilesAndFolders()
             case .appSettings:
-                AppWindows.settings.show()
+                AppNavigation.shared.show(.menu)
             case nil:
                 break
             }

@@ -4,211 +4,204 @@ import SwiftUI
 
 enum CustomActionsTab: Hashable { case configuration, script, test }
 
+/// "My Actions": the action list on the left, the selected action's editor on the
+/// right. Reordering is drag-and-drop (or ⌘⌥↑ / ⌘⌥↓); enabling is a switch in
+/// the row, so the common cases never need the editor at all.
 struct CustomActionsView: View {
-    static let minimumWindowSize = NSSize(width: 960, height: 650)
-
     @EnvironmentObject private var model: CustomActionsModel
-    @State private var actionsPage = 1
-    @State private var actionsPageSize = MarketQuery.defaultPageSize
+    @State private var search = ""
 
-    private var sidebarActions: [CustomAction] {
+    private var query: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Saved actions plus an unsaved new draft appended at the end.
+    private var listedActions: [CustomAction] {
         var actions = model.actions
         if let draft = model.draft, !actions.contains(where: { $0.id == draft.id }) { actions.append(draft) }
-        return actions
-    }
-    private var actionsPagination: MarketPagination {
-        MarketPagination(total: sidebarActions.count, page: actionsPage, pageSize: actionsPageSize)
-    }
-    private var visibleActions: [CustomAction] {
-        Array(sidebarActions.dropFirst((actionsPagination.page - 1) * actionsPageSize).prefix(actionsPageSize))
+        guard !query.isEmpty else { return actions }
+        return actions.filter {
+            $0.title.localizedCaseInsensitiveContains(query) || $0.group.localizedCaseInsensitiveContains(query)
+        }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            sectionTabs
-            Divider()
-            if model.section == .market {
-                VStack(spacing: 0) {
-                    if let error = model.error {
-                        Text(error).foregroundStyle(.red).textSelection(.enabled).padding(12)
-                    }
-                    MarketPane()
-                }
-            } else {
-                HSplitView {
-                    sidebar.frame(minWidth: 260, idealWidth: 280, maxWidth: 320, maxHeight: .infinity, alignment: .topLeading)
-                    actionDetail.frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
-            }
-        }
-        .controlSize(.small)
-        .frame(minWidth: Self.minimumWindowSize.width, maxWidth: .infinity,
-               minHeight: Self.minimumWindowSize.height, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { followSelectedAction() }
-        .onChange(of: model.draft?.id) { _ in followSelectedAction() }
-        .onChange(of: model.actions.map(\.id)) { _ in followSelectedAction() }
-        .onChange(of: actionsPageSize) { _ in followSelectedAction() }
-        .sheet(item: $model.importRequest, onDismiss: {
-            if model.importRequest == nil { model.cancelImport() }
-        }) { request in
-            ActionImportSheet(requestID: request.id)
+        HSplitView {
+            sidebar
+                .frame(minWidth: 240, idealWidth: 280, maxWidth: 340, maxHeight: .infinity)
+            detail
+                .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
         }
     }
 
-    private var sectionTabs: some View {
-        Picker(Strings.Custom.title, selection: $model.section) {
-            Text(Strings.Custom.myActions).tag(CustomActionsSection.mine)
-            Text(Strings.Custom.market).tag(CustomActionsSection.market)
-        }
-        .pickerStyle(.segmented)
-        .controlSize(.large)
-        .font(.system(size: 14, weight: .medium))
-        .labelsHidden()
-        .frame(width: 340)
-        .accessibilityIdentifier("actions.section")
-        .frame(maxWidth: .infinity)
-        .overlay(alignment: .trailing) {
-            if model.section == .market && model.activeCount > 0 {
-                Button(Strings.Custom.activeTasks(model.activeCount), action: model.showRuns)
-                    .buttonStyle(.borderless)
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 14)
-        .background(.regularMaterial)
-    }
-
-    private var actionDetail: some View {
-        VStack(spacing: 0) {
-            if let error = model.error, model.draft == nil {
-                Text(error).foregroundStyle(.red).textSelection(.enabled).padding(12)
-            }
-            if let message = model.catalogError {
-                catalogFailure(message)
-            } else if let draft = model.draft {
-                CustomActionEditor(action: Binding(
-                    get: { model.draft ?? draft },
-                    set: { model.draft = $0 }
-                ))
-                .id(draft.id)
-            } else if !model.runs.isEmpty && model.editorTab == .test {
-                CustomActionTestView(action: nil)
-            } else {
-                Color(nsColor: .windowBackgroundColor)
-            }
-        }
-    }
+    // MARK: - Sidebar
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            List(selection: Binding(get: { model.draft?.id }, set: { if let id = $0 { model.select(id) } })) {
-                ForEach(visibleActions) { saved in
-                    actionRow(model.draft?.id == saved.id ? model.draft ?? saved : saved)
-                        .tag(saved.id)
-                }
+        VStack(spacing: 0) {
+            sidebarHeader
+            if model.actions.isEmpty && model.draft == nil {
+                emptyList
+            } else {
+                list
             }
-            .listStyle(.sidebar)
-            .accessibilityIdentifier("actions.list")
-
-            Divider()
-            sidebarControls
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .background(.regularMaterial)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
 
-    private var sidebarPagination: some View {
-        HStack(spacing: 4) {
-            Picker(Strings.Custom.pageSize, selection: $actionsPageSize) {
-                ForEach(MarketQuery.pageSizes, id: \.self) { size in Text(Strings.Custom.perPage(size)).tag(size) }
-            }
-            .pickerStyle(.menu).labelsHidden().fixedSize()
-            .accessibilityIdentifier("actions.pageSize")
-            Spacer(minLength: 4)
-            HStack(spacing: 4) {
-                Button { actionsPage = actionsPagination.page - 1 } label: {
-                    Image(systemName: "chevron.left").frame(width: 24, height: 24).contentShape(Rectangle())
+    private var sidebarHeader: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Text(Strings.Custom.myActions).font(.headline)
+                Spacer()
+                Menu {
+                    Button(Strings.Custom.duplicate, action: model.duplicate)
+                        .disabled(model.draft == nil || !model.canEdit || model.actions.count >= 100)
+                    Button(Strings.Custom.copyAction, action: model.copyPackage)
+                        .disabled(model.draft == nil)
+                    Divider()
+                    Button(Strings.Custom.moveUp) { model.move(-1) }
+                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                        .disabled((model.selectedIndex ?? 0) <= 0 || !model.canEdit || !query.isEmpty)
+                    Button(Strings.Custom.moveDown) { model.move(1) }
+                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                        .disabled(model.selectedIndex == nil || model.selectedIndex == model.actions.count - 1
+                                  || !model.canEdit || !query.isEmpty)
+                    Divider()
+                    Button(Strings.Custom.delete, role: .destructive, action: model.delete)
+                        .disabled(model.draft == nil || !model.canEdit)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-                .disabled(actionsPagination.page <= 1)
-                .help(Strings.Custom.previousPage).accessibilityLabel(Strings.Custom.previousPage)
-                .accessibilityIdentifier("actions.previousPage")
-                Text(Strings.Custom.pagePosition(actionsPagination.page, actionsPagination.totalPages))
-                    .font(.caption).monospacedDigit().foregroundStyle(.secondary).fixedSize()
-                    .accessibilityIdentifier("actions.pagePosition")
-                Button { actionsPage = actionsPagination.page + 1 } label: {
-                    Image(systemName: "chevron.right").frame(width: 24, height: 24).contentShape(Rectangle())
-                }
-                .disabled(actionsPagination.page >= actionsPagination.totalPages)
-                .help(Strings.Custom.nextPage).accessibilityLabel(Strings.Custom.nextPage)
-                .accessibilityIdentifier("actions.nextPage")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(Strings.Custom.moreActions)
+                .accessibilityLabel(Strings.Custom.moreActions)
+                Button(action: model.create) { Image(systemName: "plus") }
+                    .keyboardShortcut("n", modifiers: .command)
+                    .help(Strings.Custom.newAction)
+                    .accessibilityLabel(Strings.Custom.newAction)
+                    .disabled(!model.canEdit || model.actions.count >= 100)
             }
             .buttonStyle(.borderless)
+            SearchField(placeholder: Strings.Custom.searchActions, text: $search, clearLabel: Strings.Custom.clearSearch)
+        }
+        .padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 10)
+    }
+
+    private var list: some View {
+        List(selection: Binding(get: { model.draft?.id }, set: { if let id = $0 { model.select(id) } })) {
+            ForEach(listedActions) { saved in
+                ActionRow(action: model.draft?.id == saved.id ? model.draft ?? saved : saved,
+                          isSaved: model.actions.contains { $0.id == saved.id })
+                    .tag(saved.id)
+            }
+            .onMove { source, destination in
+                guard query.isEmpty else { return }
+                model.move(from: source, to: destination)
+            }
+            .moveDisabled(!query.isEmpty || !model.canEdit)
+        }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("actions.list")
+        .overlay {
+            if listedActions.isEmpty {
+                Text(Strings.Custom.noMatchingActions)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Text(Strings.Custom.actionCount(model.actions.count))
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14).padding(.vertical, 8)
         }
     }
 
-    private func followSelectedAction() {
-        if let index = sidebarActions.firstIndex(where: { $0.id == model.draft?.id }) { actionsPage = index / actionsPageSize + 1 }
-        else { actionsPage = actionsPagination.page }
-    }
-
-    private var sidebarControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                newActionButton.keyboardShortcut("n", modifiers: .command)
-                Spacer(minLength: 0)
-                Button(action: model.duplicate) { Image(systemName: "doc.on.doc") }
-                    .help(Strings.Custom.duplicate).accessibilityLabel(Strings.Custom.duplicate)
-                    .disabled(model.draft == nil || !model.canEdit || model.actions.count >= 100)
-                Button(action: model.delete) { Image(systemName: "trash") }
-                    .help(Strings.Custom.delete).accessibilityLabel(Strings.Custom.delete)
-                    .disabled(model.draft == nil || !model.canEdit)
-            }
-            .buttonStyle(.borderless)
-            if !sidebarActions.isEmpty { sidebarPagination }
-            ActionOrderControls(selectedIndex: model.selectedIndex, totalCount: model.actions.count,
-                                enabled: model.canEdit, onMove: model.move)
-            if model.activeCount > 0 {
-                Button(Strings.Custom.activeTasks(model.activeCount), action: model.showRuns)
-                    .buttonStyle(.borderless).font(.caption)
-            }
+    private var emptyList: some View {
+        EmptyStateView(symbol: "square.stack.3d.up", title: Strings.Custom.emptyActionsTitle,
+                       detail: Strings.Custom.emptyActionsDetail) {
+            Button(Strings.Custom.newAction, action: model.create)
+                .buttonStyle(.borderedProminent)
+                .disabled(!model.canEdit)
+            Button(Strings.Custom.browseMarket) { AppNavigation.shared.show(.market) }
         }
-        .padding(12)
     }
 
-    private func actionRow(_ action: CustomAction) -> some View {
+    // MARK: - Detail
+
+    @ViewBuilder private var detail: some View {
+        if let message = model.catalogError {
+            EmptyStateView(symbol: "exclamationmark.triangle", title: message, tint: .orange) {
+                Button(Strings.Custom.retry, action: model.reload)
+            }
+        } else if let draft = model.draft {
+            CustomActionEditor(action: Binding(
+                get: { model.draft ?? draft },
+                set: { model.draft = $0 }
+            ))
+            .id(draft.id)
+        } else if !model.runs.isEmpty && model.editorTab == .test {
+            CustomActionTestView(action: nil)
+        } else {
+            EmptyStateView(symbol: "cursorarrow.click.2", title: Strings.Custom.selectActionTitle,
+                           detail: Strings.Custom.selectActionDetail)
+        }
+    }
+}
+
+// MARK: - Row
+
+private struct ActionRow: View {
+    @EnvironmentObject private var model: CustomActionsModel
+    let action: CustomAction
+    let isSaved: Bool
+
+    var body: some View {
         HStack(spacing: 10) {
-            Image(nsImage: model.image(for: action.icon)).resizable().scaledToFit().frame(width: 20, height: 20)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(action.title.isEmpty ? Strings.Custom.untitled : action.title).lineLimit(1)
-                if !action.isEnabled {
-                    Text(Strings.Custom.disabled).font(.caption).foregroundStyle(.secondary)
-                } else if !action.group.isEmpty {
-                    Text(action.group).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Image(nsImage: model.image(for: action.icon))
+                .resizable().scaledToFit()
+                .frame(width: 18, height: 18)
+                .frame(width: 30, height: 30)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .opacity(action.isEnabled ? 1 : 0.5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(action.title.isEmpty ? Strings.Custom.untitled : action.title)
+                    .lineLimit(1)
+                    .foregroundStyle(action.isEnabled ? .primary : .secondary)
+                HStack(spacing: 6) {
+                    if !action.group.isEmpty {
+                        Text(action.group).lineLimit(1)
+                    }
+                    if let metadata = action.packageMetadata {
+                        Text("v\(metadata.version)").monospacedDigit()
+                    }
+                    if !isSaved {
+                        Text(Strings.Custom.unsaved)
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 4)
+            if isSaved {
+                Toggle("", isOn: Binding(
+                    get: { action.isEnabled },
+                    set: { model.setEnabled(action.id, $0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .accessibilityLabel(Strings.Custom.enabled)
+            }
         }
         .padding(.vertical, 3)
     }
-
-    private var newActionButton: some View {
-        Button(action: model.create) {
-            Label(Strings.Custom.newAction, systemImage: "plus")
-        }
-        .fixedSize()
-        .disabled(!model.canEdit || model.actions.count >= 100)
-    }
-
-    private func catalogFailure(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.orange)
-            Text(message).textSelection(.enabled).multilineTextAlignment(.center)
-            Button(Strings.Custom.retry, action: model.reload)
-        }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
 }
+
+// MARK: - Editor
 
 private struct CustomActionEditor: View {
     @EnvironmentObject private var model: CustomActionsModel
@@ -217,35 +210,23 @@ private struct CustomActionEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if let metadata = action.packageMetadata {
-                HStack {
-                    Text("v\(metadata.version)").font(.caption.monospaced()).foregroundStyle(.secondary)
-                    if let marketURL = metadata.marketURL, metadata.tracksUpdates != false {
-                        Button(Strings.Custom.checkUpdates) { model.openMarketURL(marketURL) }.buttonStyle(.borderless)
-                    }
-                }.padding(.horizontal, 16).padding(.bottom, 10)
-            }
-            if let notice = model.notice {
-                Text(notice).font(.callout).foregroundStyle(.secondary)
-                    .padding(.horizontal, 16).padding(.bottom, 10)
-            }
-            if let error = model.error {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-                    Text(error).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                    Button { model.error = nil } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.borderless).accessibilityLabel(Strings.Custom.dismiss)
+            VStack(alignment: .leading, spacing: 8) {
+                if let notice = model.notice {
+                    InlineNotice(message: notice)
                 }
-                .font(.callout).padding(12)
-                .background(Color.red.opacity(0.07)).padding(.horizontal, 16).padding(.bottom, 10)
+                if let error = model.error {
+                    InlineErrorBanner(message: error) { model.error = nil }
+                }
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, model.notice == nil && model.error == nil ? 0 : 10)
             Picker(Strings.Custom.title, selection: $model.editorTab) {
                 Text(Strings.Custom.configuration).tag(CustomActionsTab.configuration)
                 Text(Strings.Custom.script).tag(CustomActionsTab.script)
                 Text(Strings.Custom.test).tag(CustomActionsTab.test)
             }
-            .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 440)
-            .padding(.horizontal, 16).padding(.bottom, 12)
+            .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 380)
+            .padding(.horizontal, 20).padding(.bottom, 12)
             Divider()
             Group {
                 switch model.editorTab {
@@ -256,30 +237,57 @@ private struct CustomActionEditor: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(nsImage: model.image(for: action.icon)).resizable().scaledToFit().frame(width: 26, height: 26)
-                .frame(width: 40, height: 40)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            Text(action.title.isEmpty ? Strings.Custom.untitled : action.title).font(.title3.weight(.semibold)).lineLimit(1)
-            if model.isDirty {
-                Circle().fill(Color.accentColor).frame(width: 6, height: 6)
-                    .help(Strings.Custom.unsaved).accessibilityLabel(Strings.Custom.unsaved)
+        HStack(spacing: 12) {
+            Image(nsImage: model.image(for: action.icon))
+                .resizable().scaledToFit()
+                .frame(width: 26, height: 26)
+                .frame(width: 44, height: 44)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(action.title.isEmpty ? Strings.Custom.untitled : action.title)
+                        .font(.title3.weight(.semibold)).lineLimit(1)
+                    if model.isDirty {
+                        Circle().fill(Color.accentColor).frame(width: 7, height: 7)
+                            .help(Strings.Custom.unsaved).accessibilityLabel(Strings.Custom.unsaved)
+                    }
+                }
+                provenance
             }
             Spacer(minLength: 8)
             if model.isDirty {
-                Button(Strings.Custom.discard, action: model.discard).buttonStyle(.borderless)
+                Button(Strings.Custom.discard, action: model.discard)
             }
-            Button(action: model.copyPackage) { Image(systemName: "square.and.arrow.up") }
-                .help(Strings.Custom.copyAction).accessibilityLabel(Strings.Custom.copyAction)
             Button(Strings.Custom.save) { model.save() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!model.isDirty || !model.canEdit)
         }
-        .padding(16)
+        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
+    }
+
+    @ViewBuilder private var provenance: some View {
+        HStack(spacing: 8) {
+            if let metadata = action.packageMetadata {
+                StatusPill(text: "v\(metadata.version)", tint: .secondary)
+                if metadata.tracksUpdates == false {
+                    Text(Strings.Custom.separateCopy)
+                } else if let marketURL = metadata.marketURL {
+                    Button(Strings.Custom.checkUpdates) { model.openMarketURL(marketURL) }
+                        .buttonStyle(.link)
+                }
+            } else if !action.isEnabled {
+                StatusPill(text: Strings.Custom.disabled, tint: .orange)
+            } else if !action.group.isEmpty {
+                Label(action.group, systemImage: "folder").lineLimit(1)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }
 
@@ -293,16 +301,18 @@ private struct CustomActionConfiguration: View {
             Section {
                 TextField(Strings.Custom.name, text: $action.title).focused($isNameFocused)
                 TextField(Strings.Custom.group, text: $action.group, prompt: Text(Strings.Custom.groupHint))
-                Toggle(Strings.Custom.enabled, isOn: $action.isEnabled).toggleStyle(.switch).controlSize(.small)
-            }
-            Section(Strings.Custom.icon) {
-                HStack(spacing: 12) {
-                    Image(nsImage: model.image(for: action.icon)).resizable().scaledToFit().frame(width: 24, height: 24)
-                        .accessibilityLabel(Strings.Custom.icon)
-                        .accessibilityIdentifier("actions.currentIcon")
-                    Spacer()
-                    ActionSymbolPicker(icon: $action.icon)
+                LabeledContent(Strings.Custom.icon) {
+                    HStack(spacing: 10) {
+                        Image(nsImage: model.image(for: action.icon))
+                            .resizable().scaledToFit().frame(width: 18, height: 18)
+                            .frame(width: 28, height: 28)
+                            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .accessibilityLabel(Strings.Custom.icon)
+                            .accessibilityIdentifier("actions.currentIcon")
+                        ActionSymbolPicker(icon: $action.icon)
+                    }
                 }
+                Toggle(Strings.Custom.enabled, isOn: $action.isEnabled).toggleStyle(.switch)
             }
             Section(Strings.Custom.rules) {
                 Picker(Strings.Custom.target, selection: $action.rules.target) {
@@ -350,6 +360,7 @@ private struct CustomActionConfiguration: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .onAppear { isNameFocused = action.title.isEmpty }
     }
 }
@@ -361,15 +372,17 @@ private struct CustomActionScriptEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 20) {
+            HStack(spacing: 16) {
                 Picker(Strings.Custom.language, selection: $action.language) {
                     ForEach(ScriptLanguage.allCases, id: \.self) { language in Text(language.title).tag(language) }
-                }.frame(maxWidth: 220)
+                }
+                .fixedSize()
                 Spacer(minLength: 0)
                 Picker(Strings.Custom.source, selection: $action.source) {
                     Text(Strings.Custom.inline).tag(ScriptSource.inline)
                     Text(Strings.Custom.externalFile).tag(ScriptSource.file)
-                }.pickerStyle(.segmented).labelsHidden().frame(width: 270)
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
             }
             if action.language == .python {
                 HStack {
@@ -382,14 +395,15 @@ private struct CustomActionScriptEditor: View {
             if action.source == .inline {
                 ScriptTextView(text: $action.script)
                     .frame(minHeight: 180, maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
             } else {
                 HStack {
                     TextField(Strings.Custom.externalFile, text: $action.scriptPath)
                         .textFieldStyle(.roundedBorder).help(Strings.Custom.externalScriptHint)
                     Button(Strings.Custom.chooseScript, action: model.chooseScript)
                 }
+                Text(Strings.Custom.externalScriptHint).font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 20)
             }
 
@@ -459,7 +473,7 @@ private struct CustomActionTestView: View {
                         Text(model.runs.isEmpty ? Strings.Custom.noRuns : Strings.Custom.selectRun).tag(UUID?.none)
                     }
                     ForEach(model.runs) { run in
-                        Text("\(run.startedAt.formatted(date: .omitted, time: .standard)) · \(run.title) · \(run.snapshot.state.title)")
+                        Text("\(Strings.dateTime(run.startedAt)) · \(run.title) · \(run.snapshot.state.title)")
                             .tag(UUID?.some(run.id))
                     }
                 }
@@ -477,7 +491,7 @@ private struct CustomActionTestView: View {
                         Text(Strings.Custom.stdout).tag(false)
                         Text(Strings.Custom.stderr).tag(true)
                     }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 280)
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
                     Spacer()
                     if (showStderr ? run.snapshot.stderrTruncated : run.snapshot.stdoutTruncated) {
                         Text(Strings.Custom.truncated).font(.caption).foregroundStyle(.secondary)
@@ -495,17 +509,21 @@ private struct CustomActionTestView: View {
     }
 
     private var testControls: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Button(Strings.Custom.chooseSamples, action: model.chooseSamples)
-                Text(Strings.Custom.items(model.samples.count)).font(.caption).foregroundStyle(.secondary)
+                if !model.samples.isEmpty {
+                    Text(Strings.Custom.items(model.samples.count)).font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button(action: model.testDraft) { Label(Strings.Custom.testDraft, systemImage: "play.fill") }
                     .buttonStyle(.borderedProminent).keyboardShortcut("r", modifiers: .command)
                     .help(Strings.Custom.testNotice)
                     .disabled(model.samples.isEmpty || !matches || model.activeCount >= 3)
             }
-            if !model.samples.isEmpty {
+            if model.samples.isEmpty {
+                Text(Strings.Custom.noTestFiles).font(.caption).foregroundStyle(.secondary)
+            } else {
                 ScrollView {
                     VStack(spacing: 6) {
                         ForEach(model.samples, id: \.self) { url in
@@ -521,7 +539,10 @@ private struct CustomActionTestView: View {
                     }
                 }
                 .frame(height: min(90, CGFloat(model.samples.count) * 24))
-                if !matches { Text(Strings.Custom.sampleMismatch).font(.caption).foregroundStyle(.orange) }
+                if !matches {
+                    Label(Strings.Custom.sampleMismatch, systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.orange)
+                }
             }
         }
     }
@@ -554,8 +575,8 @@ private struct CustomActionTestView: View {
     private func outputView(_ text: String) -> some View {
         ScriptTextView(text: .constant(text), isEditable: false)
             .frame(minHeight: 150, maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
             .overlay(alignment: .topLeading) {
                 if text.isEmpty { Text(Strings.Custom.emptyOutput).font(.callout).foregroundStyle(.secondary).padding(12).allowsHitTesting(false) }
             }

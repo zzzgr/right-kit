@@ -91,8 +91,8 @@ a bare custom-action URL. Never run scripts or read their external files in the 
 New actions start as an empty `CustomAction` in the configuration tab. Do not add
 built-in demo scripts or a template picker. Keep the editor compact: usage details
 belong in `Docs/CustomActions.md` or tooltips; show errors and changing state when needed.
-The menu-bar menu exposes Settings and Quit; access custom actions and running tasks
-through Settings → Custom Actions.
+The menu-bar menu exposes Settings (⌘,), My Actions, Action Market and Quit; every entry
+lands on a section of the one main window through `AppNavigation.show(_:)`.
 Marketplace and portable import are implemented. See `Docs/MarketIntegration.md` for
 the workflow and local integration checks; `plan/README.md` records the original design.
 
@@ -106,18 +106,32 @@ Direct links bind to a market only after verifying the catalog or release
 metadata. Both Debug and Release support HTTP and HTTPS markets, including LAN
 addresses. ATS permits HTTP in the host app; origin, redirect, size, and digest
 validation still apply to every market request.
-Larger, centered top-level tabs switch between My Actions and Action Market. Only My Actions uses a
-split view: the action list on the left and the selected editor (or an empty pane) on
-the right. The market fills the content width and keeps action details in a sheet.
-The local action sidebar also paginates without discarding the active draft. Page-size
-controls use compact menu pickers. The sidebar places New / Duplicate / Delete above
-a single pagination row containing page size, position, and Previous / Next controls.
-The window and view share a 960 × 650 minimum content size; restored frames are clamped
-to that minimum. The icon row shows only the current image and the
-icon-library button. Users choose from 64 categorized SF Symbols with localized names;
-there are no symbol-name or local-image inputs. Preserve images from existing and
-market-imported actions until the user chooses a replacement from the library.
-There is no Recent Runs button; history remains inside Manual Test.
+
+**Main window.** One `HostedWindow` (`AppWindows.main`, style `.split`) hosts a
+`NavigationSplitView`: a sidebar with the app icon, a one-line health summary and the
+sections General / Right-Click Menu / My Actions / Action Market / About
+(`AppSection`, `Features/Main/*`). The sidebar's brand block sits *outside* the `List`
+on purpose — a sidebar `Section` header becomes a collapsible outline group on macOS
+and swallowed the rows. The window creates its (empty) unified toolbar *before*
+installing the hosting controller, otherwise the first layout is laid under the title
+bar. Minimum content size is 1040 × 700 — sized so the widest sidebar (240) plus My Actions'
+two columns (240 + 560) fit without clipping — and restored frames are clamped to it.
+Columns that can outgrow the window scroll (`Form`, `ScrollView`) rather than clip.
+Dates are always `Strings.day` (`2026-01-01`) or `Strings.dateTime` (`2026-01-01 00:00:00`). Panes reuse
+`Support/UIComponents.swift` (`PageHeader`, `SurfaceCard`, `EmptyStateView`,
+`StatusPill`, `SearchField`, inline banners) — add to it rather than restyling ad hoc.
+The Right-Click Menu pane pairs each built-in row with its app picker and shows a live
+`MenuPreview` that mirrors the extension's grouping rules. My Actions is an `HSplitView`:
+a searchable list (drag-and-drop or ⌘⌥↑/⌘⌥↓ reorder via `move(from:to:)`, an enable
+switch per row via `setEnabled`) and the editor with Configuration / Script / Manual
+Test tabs; there is no local pagination. The market is a `LazyVGrid` of cards with
+search, language filter, updates-only and server-side pagination; details open in the
+shared import sheet, which is attached to the main window so section switches never
+tear it down. Custom PNG icons are drawn as template images everywhere (lists, cards, preview, Finder menu) so they take the same ink as SF Symbols; the market site applies the matching CSS filter. The icon row shows only the current image and the icon-library button.
+Users choose from 64 categorized SF Symbols with localized names; there are no
+symbol-name or local-image inputs. Preserve images from existing and market-imported
+actions until the user chooses a replacement from the library. There is no Recent Runs
+button; history remains inside Manual Test.
 `rightkit://import` immediately opens the shared loading/preview sheet, with visible
 failure and retry states. It never runs a script. Importing stages an editable
 draft; saving is the existing explicit step that updates the Finder catalog.
@@ -276,7 +290,9 @@ App:
 - `Notifier` — failure notifications and their click routing. Nothing else reports.
 - `CustomActionsModel` — drafts, catalog edits, Keychain references, samples, at most
   three concurrent tasks and the last 20 run records. Manual tests never auto-save.
-- `AppWindows` — setup, settings and the resizable custom-actions `HostedWindow`s.
+- `AppWindows` — the setup panel and the resizable main `HostedWindow`.
+- `AppNavigation` — the selected `AppSection`; `show(_:)` is the only way to open the
+  main window on a section (menu bar, notifications and `rightkit://` links use it).
 - `StatusItemPlacement` — initial menu-bar position and legacy seed migration (see above).
 
 ## Conventions

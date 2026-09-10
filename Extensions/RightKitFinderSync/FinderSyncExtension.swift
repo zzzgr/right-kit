@@ -223,6 +223,8 @@ final class FinderSyncExtension: FIFinderSync {
             guard let url = customStore?.iconURL(named: name), let image = NSImage(contentsOf: url) else { return nil }
             let side = max(image.size.width, image.size.height, 1)
             image.size = NSSize(width: image.size.width * 16 / side, height: image.size.height * 16 / side)
+            // Same monochrome treatment as the SF Symbol rows.
+            image.isTemplate = true
             if appIconCache.count > 256 { appIconCache.removeAll() }
             appIconCache[key] = image
             return image

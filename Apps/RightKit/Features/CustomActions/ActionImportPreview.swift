@@ -2,6 +2,8 @@ import AppKit
 import RightKitShared
 import SwiftUI
 
+/// Detail sheet for an action from the market or a direct link: description,
+/// source, version history, then the import decision.
 struct ActionImportPreview: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: CustomActionsModel
@@ -27,110 +29,172 @@ struct ActionImportPreview: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                packageIcon.frame(width: 32, height: 32).foregroundStyle(Color.accentColor)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(package.action.title).font(.title3.weight(.semibold)).lineLimit(2)
-                    Text("v\(package.version) · \(package.publisher.name)").font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button { dismiss() } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless).accessibilityLabel(Strings.Custom.dismiss)
-            }
-            Text(package.summary).foregroundStyle(.secondary).lineLimit(3)
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 14)
             Picker(Strings.Custom.importAction, selection: $tab) {
                 Text(Strings.Custom.actionDescription).tag(0)
                 Text(Strings.Custom.sourceCode).tag(1)
                 Text(Strings.Custom.versionHistory).tag(2)
-            }.pickerStyle(.segmented).labelsHidden()
+            }
+            .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
+            .padding(.horizontal, 22).padding(.bottom, 12)
+            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if tab == 0 { description }
-                    else if tab == 1 {
-                        Text(verbatim: package.action.script.content).font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                    } else { history }
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(4)
-            }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            if let installed {
-                VStack(alignment: .leading, spacing: 7) {
-                    if MarketProtocol.isNewer(installed.version, than: package.version) {
-                        Text(Strings.Custom.olderVersion(installed.version, package.version)).foregroundStyle(.orange)
-                    } else { Text(Strings.Custom.installedVersion(installed.version)).foregroundStyle(.secondary) }
-                    if installed.version != package.version {
-                        Toggle(Strings.Custom.preserveLocalEdits, isOn: $preferLocal).toggleStyle(.checkbox)
-                        Text(Strings.Custom.localConfigurationKept).font(.caption).foregroundStyle(.secondary)
+                    else if tab == 1 { source }
+                    else { history }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(22)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor))
+            Divider()
+            footer
+                .padding(.horizontal, 22).padding(.vertical, 14)
+        }
+        .frame(width: 680, height: 640)
+        .task(id: preview.id) { if let url = preview.versionsURL { await loadVersions(url) } }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 14) {
+            packageIcon
+                .frame(width: 28, height: 28)
+                .frame(width: 52, height: 52)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(package.action.title).font(.title2.weight(.semibold)).lineLimit(2)
+                HStack(spacing: 8) {
+                    Text("v\(package.version)").monospacedDigit()
+                    Text("·")
+                    Text(package.publisher.name)
+                    Text("·")
+                    Text(package.action.language.title)
+                    if let installed {
+                        StatusPill(text: MarketProtocol.isNewer(package.version, than: installed.version)
+                                        ? Strings.Custom.updateAvailable : Strings.Custom.installedVersion(installed.version),
+                                   symbol: "checkmark.circle.fill", tint: .green)
                     }
                 }
+                .font(.callout).foregroundStyle(.secondary)
+                Text(package.summary).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            if let message = compatibilityError ?? error { Text(message).foregroundStyle(.red).textSelection(.enabled) }
-            Divider()
-            Text(Strings.Custom.importReview).font(.caption).foregroundStyle(.secondary)
-            HStack {
-                if let url = preview.detailURL { Link(Strings.Custom.viewOnMarket, destination: url) }
-                Spacer()
-                if installed != nil { Button(Strings.Custom.importCopy) { stage(asCopy: true) }.disabled(compatibilityError != nil) }
-                Button(importTitle) { stage() }.buttonStyle(.borderedProminent).disabled(compatibilityError != nil || !model.canEdit)
-            }
-        }.controlSize(.small).padding(20).frame(width: 620, height: 620)
-            .task(id: preview.id) { if let url = preview.versionsURL { await loadVersions(url) } }
+            Spacer(minLength: 8)
+            Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").font(.title3) }
+                .buttonStyle(.borderless).foregroundStyle(.secondary)
+                .keyboardShortcut(.cancelAction)
+                .accessibilityLabel(Strings.Custom.dismiss)
+        }
     }
 
     @ViewBuilder private var packageIcon: some View {
         if case .png(let data) = package.action.icon, let image = NSImage(data: data) {
-            Image(nsImage: image).resizable().renderingMode(.original).scaledToFit()
+            Image(nsImage: image).resizable().renderingMode(.template).scaledToFit().foregroundStyle(.primary)
         } else if case .symbol(let name) = package.action.icon {
             Image(systemName: NSImage(systemSymbolName: name, accessibilityDescription: nil) == nil ? "terminal" : name)
                 .resizable().scaledToFit()
         }
     }
 
+    // MARK: - Tabs
+
     private var description: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             MarkdownView(package.description.isEmpty ? package.summary : package.description)
             if let selected = releases.first(where: { $0.version == package.version }) {
-                Divider()
-                Text("v\(selected.version)").font(.headline)
-                MarkdownView(selected.notes)
+                SurfaceCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("v\(selected.version)").font(.headline)
+                        MarkdownView(selected.notes)
+                    }
+                }
             }
-            Divider()
+            requirements
+        }
+    }
+
+    private var requirements: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text(Strings.Custom.runRequirements).font(.headline)
-            Text(package.action.language.title).font(.callout)
-            if let python = package.requirements.python { Text("Python \(python)") }
-            ForEach(package.requirements.pythonPackages, id: \.name) { dependency in
-                Text("\(dependency.name) \(dependency.version ?? "")")
+            SurfaceCard {
+                VStack(alignment: .leading, spacing: 6) {
+                    if package.requirements.python == nil && package.requirements.pythonPackages.isEmpty
+                        && package.requirements.commands.isEmpty {
+                        Text(Strings.Custom.noRequirements).foregroundStyle(.secondary)
+                    }
+                    if let python = package.requirements.python { requirementRow("Python \(python)", symbol: "chevron.left.forwardslash.chevron.right") }
+                    ForEach(package.requirements.pythonPackages, id: \.name) { dependency in
+                        requirementRow("\(dependency.name) \(dependency.version ?? "")", symbol: "shippingbox")
+                    }
+                    ForEach(package.requirements.commands, id: \.self) { command in
+                        requirementRow(command, symbol: "terminal")
+                    }
+                }
+                .font(.callout)
             }
-            ForEach(package.requirements.commands, id: \.self) { command in Text(command) }
-            if package.requirements.python == nil && package.requirements.pythonPackages.isEmpty && package.requirements.commands.isEmpty {
-                Text(Strings.Custom.noRequirements).foregroundStyle(.secondary)
+            if let prompt = package.action.workingDirectory.prompt {
+                InlineNotice(message: prompt, symbol: "folder")
             }
-            if let prompt = package.action.workingDirectory.prompt { Text(prompt).foregroundStyle(.secondary) }
-            ForEach(package.action.environment, id: \.name) { variable in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(variable.name).font(.system(.callout, design: .monospaced))
-                    Text(variable.isSecret ? Strings.Custom.configurationNeeded : variable.value ?? "").foregroundStyle(.secondary)
-                    if let hint = variable.hint { Text(hint).font(.caption).foregroundStyle(.secondary) }
+            if !package.action.environment.isEmpty {
+                Text(Strings.Custom.environment).font(.headline).padding(.top, 6)
+                SurfaceCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(package.action.environment, id: \.name) { variable in
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 8) {
+                                    Text(variable.name).font(.system(.callout, design: .monospaced))
+                                    if variable.isSecret {
+                                        StatusPill(text: Strings.Custom.configurationNeeded, symbol: "key.fill", tint: .orange)
+                                    } else if let value = variable.value, !value.isEmpty {
+                                        Text(value).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                }
+                                if let hint = variable.hint {
+                                    Text(hint).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
+    private func requirementRow(_ text: String, symbol: String) -> some View {
+        Label(text, systemImage: symbol)
+    }
+
+    private var source: some View {
+        Text(verbatim: package.action.script.content)
+            .font(.system(size: 12, design: .monospaced))
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(Strings.Custom.sourceCode)
+    }
+
     private var history: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             ForEach(releases) { release in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("v\(release.version)").font(.headline)
+                        Text("v\(release.version)").font(.headline).monospacedDigit()
                         Spacer()
-                        Text(release.createdAt.formatted(date: .abbreviated, time: .omitted)).foregroundStyle(.secondary)
+                        Text(Strings.day(release.createdAt)).font(.callout).foregroundStyle(.secondary)
                     }
                     MarkdownView(release.notes)
                 }
                 Divider()
             }
-            if releases.isEmpty && !loadingHistory && historyError == nil { Text(Strings.Custom.noVersionHistory).foregroundStyle(.secondary) }
-            if loadingHistory { ProgressView() }
+            if releases.isEmpty && !loadingHistory && historyError == nil {
+                Text(Strings.Custom.noVersionHistory).foregroundStyle(.secondary)
+            }
+            if loadingHistory { ProgressView().controlSize(.small) }
             if let historyError {
                 Text(historyError).foregroundStyle(.red)
                 if let url = nextVersionsURL ?? preview.versionsURL {
@@ -141,6 +205,42 @@ struct ActionImportPreview: View {
             }
         }
     }
+
+    // MARK: - Footer
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let installed, installed.version != package.version {
+                if MarketProtocol.isNewer(installed.version, than: package.version) {
+                    Label(Strings.Custom.olderVersion(installed.version, package.version), systemImage: "exclamationmark.triangle")
+                        .font(.callout).foregroundStyle(.orange)
+                }
+                Toggle(isOn: $preferLocal) {
+                    Text(Strings.Custom.preserveLocalEdits)
+                    Text(Strings.Custom.localConfigurationKept)
+                }
+                .toggleStyle(.checkbox)
+            }
+            if let message = compatibilityError ?? error {
+                Label(message, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            }
+            HStack(spacing: 10) {
+                if let url = preview.detailURL {
+                    Link(Strings.Custom.viewOnMarket, destination: url)
+                }
+                Spacer()
+                if installed != nil {
+                    Button(Strings.Custom.importCopy) { stage(asCopy: true) }.disabled(compatibilityError != nil)
+                }
+                Button(importTitle) { stage() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(compatibilityError != nil || !model.canEdit)
+            }
+        }
+    }
+
+    // MARK: - Data
 
     private func loadVersions(_ url: URL) async {
         guard !loadingHistory, let origin = preview.marketURL ?? preview.sourceURL else { return }
