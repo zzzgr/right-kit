@@ -55,21 +55,8 @@ private struct MarkdownBlockView: View {
                         .fill(Color.primary.opacity(0.2)).frame(width: 2)
                 }
         case .codeBlock(let language):
-            VStack(alignment: .leading, spacing: 6) {
-                if let language, !language.isEmpty {
-                    Text(language).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                }
-                ScrollView(.horizontal) {
-                    Text(verbatim: block.plainText.hasSuffix("\n") ? String(block.plainText.dropLast()) : block.plainText)
-                        .font(.system(size: 12, design: .monospaced))
-                        .fixedSize(horizontal: true, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.primary.opacity(0.1)))
+            CodeBlockView(code: block.plainText.hasSuffix("\n") ? String(block.plainText.dropLast()) : block.plainText,
+                          language: language)
         case .thematicBreak:
             Divider().padding(.vertical, 2)
         case .table(let columns):

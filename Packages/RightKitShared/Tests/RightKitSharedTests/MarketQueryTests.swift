@@ -18,9 +18,38 @@ final class MarketQueryTests: XCTestCase {
         let url = URL(string: "https://market.example.com")!
         for query in [MarketQuery(page: 0), MarketQuery(page: 1_000_001), MarketQuery(pageSize: 101), MarketQuery(pageSize: 0),
                       MarketQuery(search: String(repeating: "x", count: 201)), MarketQuery(language: "ruby"),
-                      MarketQuery(ids: [".."]), MarketQuery(ids: Array(repeating: "item", count: 101))] {
+                      MarketQuery(ids: [".."]), MarketQuery(ids: Array(repeating: "item", count: 101)),
+                      MarketQuery(groups: [String(repeating: "x", count: 61)]),
+                      MarketQuery(groups: ["bad\0group"]), MarketQuery(groups: (0...100).map(String.init))] {
             XCTAssertThrowsError(try query.url(for: url))
         }
+    }
+
+    func testMultipleGroupsUseRepeatedParametersAndStableCacheURLs() throws {
+        let origin = URL(string: "https://market.example.com/catalog.json?group=old&token=local")!
+        let groups = ["图片工具", "PDF, 文档 & 表格", "", "图片工具"]
+        let query = MarketQuery(page: 2, search: "转换", language: "python", groups: groups)
+        let url = try query.url(for: origin)
+        let params = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(params.filter { $0.name == "group" }.compactMap(\.value), Array(Set(groups)).sorted())
+        XCTAssertEqual(params.first { $0.name == "token" }?.value, "local")
+        XCTAssertEqual(url, try MarketQuery(page: 2, search: "转换", language: "python", groups: groups.reversed()).url(for: origin))
+        XCTAssertFalse(try MarketQuery().url(for: origin).absoluteString.contains("group="))
+    }
+
+    func testGroupsMatchAnySelectedCategoryAndCombineWithOtherFilters() {
+        var item = MarketCatalog.Item(id: "image", version: "1.0.0", title: "压缩图片", summary: "优化尺寸",
+                                      language: .python, target: .files, tags: ["压缩"], symbol: "photo",
+                                      packageURL: URL(string: "https://market.example.com/image.json")!,
+                                      sha256: String(repeating: "a", count: 64), updatedAt: Date(), group: "图片工具")
+        XCTAssertTrue(MarketQuery(groups: ["文件工具", "图片工具"]).matches(item))
+        XCTAssertTrue(MarketQuery(search: "压缩", language: "python", groups: ["图片工具"], ids: ["image"]).matches(item))
+        XCTAssertFalse(MarketQuery(groups: ["文件工具"]).matches(item))
+        XCTAssertFalse(MarketQuery(language: "bash", groups: ["图片工具"]).matches(item))
+        XCTAssertTrue(MarketQuery().matches(item))
+        item.group = ""
+        XCTAssertTrue(MarketQuery(groups: [""]).matches(item))
+        XCTAssertFalse(MarketQuery(groups: ["图片工具"]).matches(item))
     }
 
     func testPaginationClampsAfterDeletionAndValidatesResponseCardinality() throws {

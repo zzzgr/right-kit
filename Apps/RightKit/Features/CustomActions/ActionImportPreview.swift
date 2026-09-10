@@ -40,14 +40,19 @@ struct ActionImportPreview: View {
             .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
             .padding(.horizontal, 22).padding(.bottom, 12)
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    if tab == 0 { description }
-                    else if tab == 1 { source }
-                    else { history }
+            Group {
+                if tab == 1 {
+                    source
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if tab == 0 { description }
+                            else { history }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(22)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(22)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .textBackgroundColor))
@@ -95,7 +100,7 @@ struct ActionImportPreview: View {
 
     @ViewBuilder private var packageIcon: some View {
         if case .png(let data) = package.action.icon, let image = NSImage(data: data) {
-            Image(nsImage: image).resizable().renderingMode(.template).scaledToFit().foregroundStyle(.primary)
+            Image(nsImage: image).resizable().renderingMode(.template).scaledToFit().foregroundStyle(Color.primary)
         } else if case .symbol(let name) = package.action.icon {
             Image(systemName: NSImage(systemSymbolName: name, accessibilityDescription: nil) == nil ? "terminal" : name)
                 .resizable().scaledToFit()
@@ -171,11 +176,18 @@ struct ActionImportPreview: View {
     }
 
     private var source: some View {
-        Text(verbatim: package.action.script.content)
-            .font(.system(size: 12, design: .monospaced))
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(Strings.Custom.sourceCode)
+        VStack(spacing: 0) {
+            HStack {
+                Text(package.action.language.title).font(.caption.monospaced()).foregroundStyle(.secondary)
+                Spacer()
+                CopyCodeButton(code: package.action.script.content)
+            }
+            .padding(.horizontal, 22).padding(.vertical, 10)
+            Divider()
+            ScriptTextView(text: .constant(package.action.script.content), isEditable: false,
+                           language: .init(package.action.language.rawValue))
+                .accessibilityIdentifier("market.source")
+        }
     }
 
     private var history: some View {

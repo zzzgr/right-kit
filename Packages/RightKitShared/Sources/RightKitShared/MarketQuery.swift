@@ -27,25 +27,29 @@ public struct MarketQuery: Equatable, Hashable, Sendable {
     public var pageSize: Int
     public var search: String
     public var language: String
+    public var groups: [String]
     public var ids: [String]?
 
-    public init(page: Int = 1, pageSize: Int = 20, search: String = "", language: String = "all", ids: [String]? = nil) {
+    public init(page: Int = 1, pageSize: Int = 20, search: String = "", language: String = "all", groups: [String] = [], ids: [String]? = nil) {
         self.page = page; self.pageSize = pageSize; self.search = search; self.language = language; self.ids = ids
+        self.groups = Array(Set(groups)).sorted()
     }
 
     public func url(for market: URL, allowHTTP: Bool = true) throws -> URL {
         let search = search.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (1...1_000_000).contains(page), (1...100).contains(pageSize), search.utf16.count <= 200,
               !search.contains("\0"), ["all", "python", "zsh", "bash", "sh"].contains(language),
+              groups.count <= 100, groups.allSatisfy({ $0.utf16.count <= 60 && !$0.contains("\0") }),
               ids.map({ $0.count <= 100 && $0.allSatisfy(MarketProtocol.isID) }) ?? true else { throw MarketCatalogError.invalid }
         let origin = try MarketProtocol.catalogURL(market.absoluteString, allowHTTP: allowHTTP)
         guard var parts = URLComponents(url: origin, resolvingAgainstBaseURL: false) else { throw MarketCatalogError.invalidURL }
-        let names = Set(["page", "pageSize", "cursor", "q", "language", "tag", "sort", "status", "ids"])
+        let names = Set(["page", "pageSize", "cursor", "q", "language", "group", "tag", "sort", "status", "ids"])
         var params = (parts.queryItems ?? []).filter { !names.contains($0.name) }
         if page > 1 { params.append(URLQueryItem(name: "page", value: String(page))) }
         if pageSize != Self.defaultPageSize { params.append(URLQueryItem(name: "pageSize", value: String(pageSize))) }
         if !search.isEmpty { params.append(URLQueryItem(name: "q", value: search)) }
         if language != "all" { params.append(URLQueryItem(name: "language", value: language)) }
+        params.append(contentsOf: Array(Set(groups)).sorted().map { URLQueryItem(name: "group", value: $0) })
         if let ids { params.append(URLQueryItem(name: "ids", value: Array(Set(ids)).sorted().joined(separator: ","))) }
         parts.queryItems = params.isEmpty ? nil : params
         guard let url = parts.url else { throw MarketCatalogError.invalidURL }
@@ -56,6 +60,7 @@ public struct MarketQuery: Equatable, Hashable, Sendable {
         let search = search.trimmingCharacters(in: .whitespacesAndNewlines)
         return (search.isEmpty || "\(item.title) \(item.summary) \(item.tags.joined(separator: " "))".localizedCaseInsensitiveContains(search))
             && (language == "all" || item.language.rawValue == language) && (ids.map { $0.contains(item.id) } ?? true)
+            && (groups.isEmpty || groups.contains(item.group ?? ""))
     }
 }
 

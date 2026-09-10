@@ -23,11 +23,13 @@ final class MarketServiceTests: XCTestCase {
         func value(_ key: String) -> String? { params.first(where: { $0.name == key })?.value }
         let query = MarketQuery(page: Int(value("page") ?? "1")!, pageSize: Int(value("pageSize") ?? "20")!,
                                 search: value("q") ?? "", language: value("language") ?? "all",
+                                groups: params.filter { $0.name == "group" }.compactMap(\.value),
                                 ids: value("ids").map { $0.split(separator: ",").map(String.init) })
         let all = (0..<43).map { index in
             var item = snapshot(url).catalog.items[0]
             item.id = String(format: "item-%02d", index); item.title = "Item \(index)"
             item.language = index.isMultiple(of: 2) ? .python : .bash
+            item.group = ["图片工具", "文件工具", "PDF 工具"][index % 3]
             item.version = "1.1.0"
             return item
         }.filter(query.matches)
@@ -35,12 +37,38 @@ final class MarketServiceTests: XCTestCase {
         var catalog = snapshot(url).catalog
         catalog.homepage = URL(string: "https://market.example.com")!
         catalog.pagination = pagination
+        catalog.groups = ["图片工具", "文件工具", "PDF 工具"]
         catalog.items = Array(all.dropFirst((pagination.page - 1) * pagination.pageSize).prefix(pagination.pageSize))
         if pagination.page < pagination.totalPages {
             var next = query; next.page = pagination.page + 1
             catalog.next = try next.url(for: url)
         }
         return MarketCatalogPage(url: url, catalog: catalog, etag: "\"\(url.absoluteString)\"")
+    }
+
+    @MainActor
+    func testCategoryUnionPaginationAndUpdateFilteringKeepAllChoices() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var requests: [URL] = []
+        let service = MarketService(root: root) { url, _ in requests.append(url); return try Self.paged(url) }
+        try await service.saveSource("https://market.example.com")
+        await service.browse(MarketQuery(page: 2, groups: ["图片工具", "PDF 工具"]))
+        XCTAssertEqual(service.pagination.total, 29)
+        XCTAssertEqual(service.items().count, 9)
+        XCTAssertTrue(service.items().allSatisfy { ["图片工具", "PDF 工具"].contains($0.item.group ?? "") })
+        let params = URLComponents(url: requests.last!, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(params.filter { $0.name == "group" }.compactMap(\.value), ["PDF 工具", "图片工具"])
+        await service.browse(MarketQuery(groups: ["未知分类"]))
+        XCTAssertTrue(service.items().isEmpty)
+        XCTAssertEqual(Set(service.groups), Set(["图片工具", "文件工具", "PDF 工具"]))
+        await service.browse(MarketQuery(groups: ["图片工具"]), installed: [
+            MarketInstalledAction(id: "item-00", version: "1.0.0", marketURL: service.source!.url),
+            MarketInstalledAction(id: "item-01", version: "1.0.0", marketURL: service.source!.url),
+        ])
+        XCTAssertEqual(service.items().map(\.item.id), ["item-00"])
+        service.removeSource(service.source!.id)
+        XCTAssertTrue(service.groups.isEmpty)
     }
 
     @MainActor

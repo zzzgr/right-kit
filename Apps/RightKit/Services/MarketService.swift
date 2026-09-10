@@ -58,6 +58,7 @@ final class MarketService: ObservableObject {
     @Published private(set) var sources: [MarketSource] = []
     @Published private(set) var catalogs: [UUID: MarketCatalogPage] = [:]
     @Published private(set) var pagination = MarketPagination(total: 0)
+    @Published private(set) var groups: [String] = []
     @Published private(set) var isRefreshing = false
     @Published private var entries: [MarketEntry] = []
     @Published var error: String?
@@ -136,6 +137,7 @@ final class MarketService: ObservableObject {
         catalogs = [source.id: page]
         pageCache = [:]; cacheOrder = []
         remember(page)
+        groups = availableGroups(in: page.catalog, items: page.catalog.items)
         display(page.catalog.items, pagination: page.catalog.pagination ?? MarketPagination(total: page.catalog.items.count), source: source)
         try? JSONEncoder().encode(page).write(to: cacheURL(source.id), options: .atomic)
         error = nil
@@ -151,7 +153,7 @@ final class MarketService: ObservableObject {
             isRefreshing = false
             sources = []
             catalogs = [:]
-            entries = []; pagination = MarketPagination(total: 0, pageSize: query.pageSize)
+            entries = []; groups = []; pagination = MarketPagination(total: 0, pageSize: query.pageSize)
             pageCache = [:]; cacheOrder = []
             try? FileManager.default.removeItem(at: cacheURL(id))
             error = nil
@@ -261,6 +263,7 @@ final class MarketService: ObservableObject {
 
     private func show(_ page: MarketCatalogPage, items: [MarketCatalog.Item], query: MarketQuery,
                       tracked: [MarketInstalledAction]?, source: MarketSource) {
+        groups = availableGroups(in: page.catalog, items: items)
         if let pagination = page.catalog.pagination, tracked == nil {
             display(items, pagination: pagination, source: source)
         } else {
@@ -274,6 +277,13 @@ final class MarketService: ObservableObject {
             let pagination = MarketPagination(total: matches.count, page: query.page, pageSize: query.pageSize)
             display(Array(matches.dropFirst((pagination.page - 1) * pagination.pageSize).prefix(pagination.pageSize)), pagination: pagination, source: source)
         }
+    }
+
+    private func availableGroups(in catalog: MarketCatalog, items: [MarketCatalog.Item]) -> [String] {
+        // Facets describe the whole published market, including when a query has no results.
+        // Legacy static catalogs can derive the choices from their complete snapshot.
+        Array(Set(catalog.groups ?? items.compactMap(\.group)))
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     private func display(_ items: [MarketCatalog.Item], pagination: MarketPagination, source: MarketSource) {

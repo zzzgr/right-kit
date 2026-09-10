@@ -162,7 +162,7 @@ private struct ActionRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(nsImage: model.image(for: action.icon))
-                .resizable().scaledToFit()
+                .resizable().renderingMode(.template).scaledToFit().foregroundStyle(Color.primary)
                 .frame(width: 18, height: 18)
                 .frame(width: 30, height: 30)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -243,7 +243,7 @@ private struct CustomActionEditor: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(nsImage: model.image(for: action.icon))
-                .resizable().scaledToFit()
+                .resizable().renderingMode(.template).scaledToFit().foregroundStyle(Color.primary)
                 .frame(width: 26, height: 26)
                 .frame(width: 44, height: 44)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -304,7 +304,8 @@ private struct CustomActionConfiguration: View {
                 LabeledContent(Strings.Custom.icon) {
                     HStack(spacing: 10) {
                         Image(nsImage: model.image(for: action.icon))
-                            .resizable().scaledToFit().frame(width: 18, height: 18)
+                            .resizable().renderingMode(.template).scaledToFit().foregroundStyle(Color.primary)
+                            .frame(width: 18, height: 18)
                             .frame(width: 28, height: 28)
                             .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .accessibilityLabel(Strings.Custom.icon)
@@ -393,7 +394,7 @@ private struct CustomActionScriptEditor: View {
                 }
             }
             if action.source == .inline {
-                ScriptTextView(text: $action.script)
+                ScriptTextView(text: $action.script, language: .init(action.language.rawValue))
                     .frame(minHeight: 180, maxHeight: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))

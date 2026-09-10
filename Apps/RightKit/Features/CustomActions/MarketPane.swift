@@ -8,20 +8,21 @@ struct MarketPane: View {
     @ObservedObject private var market = MarketService.shared
     @State private var query = ""
     @State private var language = "all"
+    @State private var groups = Set<String>()
     @State private var updatesOnly = false
     @State private var showingSettings = false
     @State private var page = 1
     @State private var pageSize = MarketQuery.defaultPageSize
 
     private var items: [MarketEntry] { market.items() }
-    private var hasFilters: Bool { !query.isEmpty || language != "all" || updatesOnly }
+    private var hasFilters: Bool { !query.isEmpty || language != "all" || !groups.isEmpty || updatesOnly }
     private var title: String {
         if let name = market.source?.name, !name.isEmpty { return name }
         return Strings.Custom.market
     }
     private var request: BrowseRequest {
         BrowseRequest(sourceURL: market.source?.url,
-                      query: MarketQuery(page: page, pageSize: pageSize, search: query, language: language),
+                      query: MarketQuery(page: page, pageSize: pageSize, search: query, language: language, groups: groups.sorted()),
                       installed: updatesOnly ? model.actions.compactMap(MarketInstalledAction.tracked) : nil)
     }
 
@@ -42,9 +43,10 @@ struct MarketPane: View {
         .sheet(isPresented: $showingSettings) { MarketSettingsSheet() }
         .onChange(of: query) { _ in page = 1 }
         .onChange(of: language) { _ in page = 1 }
+        .onChange(of: groups) { _ in page = 1 }
         .onChange(of: updatesOnly) { _ in page = 1 }
         .onChange(of: pageSize) { _ in page = 1 }
-        .onChange(of: market.source?.url) { _ in page = 1 }
+        .onChange(of: market.source?.url) { _ in page = 1; groups = [] }
         .task(id: request) {
             let request = request
             do {
@@ -82,8 +84,10 @@ struct MarketPane: View {
             }
             HStack(spacing: 10) {
                 SearchField(placeholder: Strings.Custom.marketSearch, text: $query, clearLabel: Strings.Custom.clearSearch)
-                    .frame(maxWidth: 360)
+                    .frame(minWidth: 140, maxWidth: 360)
                     .accessibilityIdentifier("market.search")
+                MarketGroupFilter(groups: market.groups, selection: $groups)
+                    .disabled(market.source == nil)
                 Picker(Strings.Custom.allLanguages, selection: $language) {
                     Text(Strings.Custom.allLanguages).tag("all")
                     Text("Python").tag("python")
@@ -127,7 +131,7 @@ struct MarketPane: View {
                                detail: Strings.Custom.noMarketResults) {
                     if hasFilters {
                         Button(Strings.Custom.clearFilters) {
-                            query = ""; language = "all"; updatesOnly = false
+                            query = ""; language = "all"; groups = []; updatesOnly = false
                         }
                     }
                 }
@@ -244,7 +248,7 @@ private struct MarketItemIcon: View {
 
     var body: some View {
         Group {
-            if let image { Image(nsImage: image).resizable().renderingMode(.template).scaledToFit().foregroundStyle(.primary) }
+            if let image { Image(nsImage: image).resizable().renderingMode(.template).scaledToFit().foregroundStyle(Color.primary) }
             else {
                 Image(systemName: NSImage(systemSymbolName: entry.item.symbol, accessibilityDescription: nil) == nil ? "terminal" : entry.item.symbol)
                     .resizable().scaledToFit()

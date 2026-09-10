@@ -7,6 +7,7 @@ import SwiftUI
 struct ScriptTextView: NSViewRepresentable {
     @Binding var text: String
     var isEditable = true
+    var language = ScriptHighlighter.Language.plain
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -46,34 +47,59 @@ struct ScriptTextView: NSViewRepresentable {
         editor.autoresizingMask = [.width]
         editor.string = text
         editor.delegate = context.coordinator
-        editor.setAccessibilityLabel(isEditable ? Strings.Custom.script : Strings.Custom.output)
+        editor.setAccessibilityLabel(accessibilityLabel)
         scroll.documentView = editor
+        ScriptHighlighter.apply(to: editor, language: language)
         return scroll
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
+        let languageChanged = context.coordinator.parent.language != language
         context.coordinator.parent = self
         guard let editor = scroll.documentView as? NSTextView else { return }
         editor.isEditable = isEditable
-        guard editor.string != text else { return }
+        editor.allowsUndo = isEditable
+        editor.setAccessibilityLabel(accessibilityLabel)
+        guard editor.string != text else {
+            if languageChanged { context.coordinator.highlight(editor) }
+            return
+        }
         let atBottom = editor.visibleRect.maxY >= editor.bounds.maxY - 32
         let selection = editor.selectedRange()
         editor.string = text
         if isEditable {
             let count = (text as NSString).length
             editor.setSelectedRange(NSRange(location: min(selection.location, count), length: 0))
-        } else if atBottom {
+        } else if language == .plain && atBottom {
             editor.scrollRangeToVisible(NSRange(location: (text as NSString).length, length: 0))
         }
+        context.coordinator.highlight(editor)
+    }
+
+    private var accessibilityLabel: String {
+        isEditable ? Strings.Custom.script : language == .plain ? Strings.Custom.output : Strings.Custom.sourceCode
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ScriptTextView
+        private var pendingHighlight: DispatchWorkItem?
         init(_ parent: ScriptTextView) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
             guard parent.isEditable, let view = notification.object as? NSTextView else { return }
             parent.text = view.string
+            highlight(view, delay: 0.08)
+        }
+
+        func highlight(_ editor: NSTextView, delay: TimeInterval = 0) {
+            pendingHighlight?.cancel()
+            let work = DispatchWorkItem { [weak self, weak editor] in
+                guard let self, let editor else { return }
+                ScriptHighlighter.apply(to: editor, language: self.parent.language)
+            }
+            pendingHighlight = work
+            if delay == 0 { work.perform() }
+            else { DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work) }
         }
     }
 }

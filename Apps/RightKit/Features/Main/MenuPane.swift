@@ -239,9 +239,9 @@ private struct MenuPreview: View {
     private func row(title: String, image: NSImage, submenu: Bool = false) -> some View {
         HStack(spacing: 8) {
             Image(nsImage: image)
-                .resizable().scaledToFit()
+                .resizable().renderingMode(image.isTemplate ? .template : .original).scaledToFit()
                 .frame(width: 16, height: 16)
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.primary)
             Text(title).lineLimit(1)
             Spacer(minLength: 0)
             if submenu { Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.secondary) }

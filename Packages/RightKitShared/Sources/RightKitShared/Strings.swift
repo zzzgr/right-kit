@@ -468,6 +468,11 @@ public enum Strings {
         public static var copyAction: String { t("复制动作包", "Copy Action Package") }
         public static var checkUpdates: String { t("检查市场更新", "Check Market Updates") }
         public static var allLanguages: String { t("全部语言", "All Languages") }
+        public static var marketGroups: String { t("分类", "Categories") }
+        public static var allGroups: String { t("全部分类", "All Categories") }
+        public static var ungrouped: String { t("未分组", "Ungrouped") }
+        public static var marketGroupsHelp: String { t("可多选，显示任一所选分类中的动作。", "Select multiple categories to show actions in any of them.") }
+        public static func selectedGroupCount(_ count: Int) -> String { t("分类（\(count)）", "Categories (\(count))") }
         public static var updatesOnly: String { t("仅看可更新", "Updates Only") }
         public static var noMarketResults: String { t("没有符合条件的动作。", "No actions match these filters.") }
         public static var marketEmptyTitle: String { t("配置动作市场", "Set Up Your Market") }
@@ -486,6 +491,8 @@ public enum Strings {
         public static var markdownTaskDone: String { t("已完成", "Completed") }
         public static var markdownTaskPending: String { t("未完成", "Not Completed") }
         public static var sourceCode: String { t("源代码", "Source") }
+        public static var copyCode: String { t("复制代码", "Copy Code") }
+        public static var codeCopied: String { t("已复制", "Copied") }
         public static var versionHistory: String { t("历史版本", "Versions") }
         public static var noVersionHistory: String { t("此来源未提供版本记录。", "This source does not provide version history.") }
         public static var loadMoreVersions: String { t("加载更早版本", "Load Earlier Versions") }
